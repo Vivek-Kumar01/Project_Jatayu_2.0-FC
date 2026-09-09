@@ -56,15 +56,22 @@ specific_power_inverter = 12.0  # kW/kg (High-voltage SiC inverter)
 specific_energy_battery = (
     200.0  # Wh/kg (Pack-level Li-ion / NMC cells with BMS & casing)
 )
+# Overhead factors
+k_bat_pack = 1.18  # 18% overhead for module casing, BMS, busbars, cooling
+k_fuel_sys = 1.05  # 5% overhead for wing bladders, pumps, baffles, unusable trapped fuel
+
 # General-purpose safe design constants for a 200 Wh/kg NMC pack:
 C_discharge_continuous_safe = 2.0  # 1/h (Continuous max discharge)
 C_charge_continuous_safe = 1.0  # 1/h (Continuous max charge)
 
 # Efficiency parameters
-eta_gearbox_prop = 0.97  # Mechanical efficiency: Engine to Prop
-eta_gearbox_gen = 0.95  # Mechanical efficiency: Engine -> Prop Shaft -> Generator (two meshes)
+eta_gearbox_ICE = 0.97  # Mechanical efficiency: Engine to Prop
+
+eta_gearbox_gen = 0.95  # Mechanical efficiency: Engine -> Prop Shaft -> Generator
 eta_motor = 0.95  # PMSM electric motor efficiency
 eta_inverter = 0.97  # SiC inverter efficiency
 
 eta_discharge = 0.9 # battery discharge efficiency
 eta_charging = 0.95 # battery charging efficiency
+
+eta_alternator = 0.8  # Alternator efficiency (engine to electrical)

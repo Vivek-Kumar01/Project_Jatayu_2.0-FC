@@ -7,17 +7,25 @@ SoC_max = 0.9  # Maximum state of charge for battery pack
 SoH = 1.0 # State of health for battery pack (1.0 = new, 0.8 = end of life)
 reserve_fuel = 0.065 # Reserve fuel fraction for safety
 
+power_avionics = 0.35 #kW
+
 battery_capacity = 22 #kWh
 power_motor = 45 #kW
 power_inverter = power_motor #kW
 power_battery_discharge = uav.C_discharge_continuous_safe * battery_capacity #kW
 power_battery_charge = uav.C_charge_continuous_safe * battery_capacity #kW
 
-mass_battery = battery_capacity*1000 / uav.specific_energy_battery #kg
 mass_motor = power_motor / uav.specific_power_motor #kg
 mass_inverter = power_inverter / uav.specific_power_inverter #kg
+mass_electric_hardware = mass_motor + mass_inverter
 
-mass_fuel = uav.M_power_pack - (mass_battery + mass_motor + mass_inverter) #kg
+mass_cells = battery_capacity / uav.specific_energy_battery #kg
+mass_battery_pack = uav.k_bat_pack * mass_cells #kg
+
+mass_fuel_system = uav.M_power_pack - (mass_battery_pack + mass_electric_hardware) #kg
+mass_fuel = mass_fuel_system / uav.k_fuel_sys #kg
+
+
 
 if mass_fuel > 0:
     print(f'''

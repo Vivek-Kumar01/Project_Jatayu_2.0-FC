@@ -9,6 +9,10 @@ rho = Atmosphere(ms.altitude_takeoff).density[0]  # kg/m^3
 t_step = 0.1  # seconds
 
 P_ICE_full = uav.P_ICE_rated * ((1.132 * rho / Atmosphere(0).density[0]) - 0.132)  # kW
+
+P_ICE_avionics = ms.power_avionics / uav.eta_alternator  # kW
+P_ICE_full = P_ICE_full - P_ICE_avionics  # kW
+
 P_electric_full = (min(ms.power_battery_discharge, ms.power_inverter/uav.eta_inverter))*uav.eta_inverter*uav.eta_motor  # kW
 
 percent_ICE_power = 1 # Percentage of ICE power
@@ -18,7 +22,7 @@ P_ICE = percent_ICE_power * P_ICE_full  # kW
 P_electric = percent_electric_power * P_electric_full  # kW
 
 DoH = P_electric / (P_ICE + P_electric)  # Hybridization factor (0 = pure ICE, 1 = pure electric)
-P_shaft_prop = (P_ICE + P_electric) * uav.eta_gearbox_prop  # kW
+P_shaft_prop = P_ICE * uav.eta_gearbox_ICE + P_electric  # kW
 
 Merit_Factor = 0.7 # Ideal power req to real power given
 Static_thrust = (Merit_Factor**(2/3)) * (2 * rho * (math.pi /4 * uav.D_prop**2) * (P_shaft_prop * 1000)**2) ** (1/3)
@@ -54,7 +58,7 @@ while V < V_LO:
     V = V + a_net * t_step
     t = t + t_step
     SoC = SoC - (elec_energy_used / ms.battery_capacity)
-    m = m - m_fuel
+    m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_max / 3600) * t_step / 1000)  # kg
 
 
     if s_roll > ms.max_permissible_sroll:
