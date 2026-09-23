@@ -30,7 +30,7 @@ percent_electric_power = 0.1 # Percentage of electric power
 
 cl_cruise = math.sqrt(uav.Cd_0 / uav.K)
 cd_cruise = uav.Cd_0 + uav.K * cl_cruise**2
-
+Phase_Success = True
 while dist_covered < ms.cruise_distance - descent_dist:
     vel_cruise = (2 * m * 9.81 / (rho * uav.S) * (uav.K / uav.Cd_0)**0.5)**0.5  # m/s
     D_cruise = 0.5 * rho * vel_cruise**2 * uav.S * cd_cruise
@@ -42,6 +42,7 @@ while dist_covered < ms.cruise_distance - descent_dist:
         Error: Required propeller shaft power exceeds maximum available power.
         MISSION FAILED.
         ''')
+        Phase_Success = False
         break
 
     if SoC > ms.SoC_min:
@@ -53,6 +54,7 @@ while dist_covered < ms.cruise_distance - descent_dist:
             Error: Required ICE power exceeds maximum available power.
             MISSION FAILED.
             ''')
+            Phase_Success = False
             break
 
         if P_ICE < 0:
@@ -60,6 +62,7 @@ while dist_covered < ms.cruise_distance - descent_dist:
             Bad Input: Required ICE power is negative. Too much electric power is being used for loitering.
             MISSION FAILED.
             ''')
+            Phase_Success = False
             break
 
         m_fuel = (P_ICE * (uav.BSFC_ICE_max / 3600)) * t_step / 1000  # kg
@@ -76,6 +79,7 @@ while dist_covered < ms.cruise_distance - descent_dist:
             Error: Required ICE power exceeds maximum available power and battery SoC is below minimum.
             MISSION FAILED.
             ''')
+            Phase_Success = False
             break
 
         m_fuel = (P_ICE * (uav.BSFC_ICE_max / 3600)) * t_step / 1000  # kg
@@ -87,6 +91,7 @@ while dist_covered < ms.cruise_distance - descent_dist:
         Error: Insufficient fuel remaining.
         MISSION FAILED.
         ''')
+        Phase_Success = False
         break
 
     dist_covered = dist_covered + (vel_cruise * t_step) / 1000  # km
@@ -94,7 +99,7 @@ while dist_covered < ms.cruise_distance - descent_dist:
 
 m_fuel_burned = m_inital - m
 
-if dist_covered >= ms.cruise_distance - descent_dist:
+if Phase_Success:
     print(f'''
     -------Cruise In Successful-------
     Distance covered: {dist_covered:.2f} km, 

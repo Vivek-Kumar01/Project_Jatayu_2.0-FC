@@ -90,6 +90,10 @@ while m > min_mass_cruisein:
         m_fuel = (P_ICE * (uav.BSFC_ICE_low / 3600)) * t_step / 1000  # kg
         m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_low / 3600) * t_step / 1000)
 
+    if m <= (uav.MTOW - ms.mass_fuel * (1.0 - ms.reserve_fuel)):
+        print("Emergency fuel reserve breached during loiter! RTB immediately.")
+        break
+
     endurance = endurance + t_step  # seconds
 
 if Loiter_Phase_Status:

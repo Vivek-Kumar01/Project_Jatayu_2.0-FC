@@ -36,8 +36,21 @@ mu_r = 0.4
 N_freeroll = 1 # sec, free rolling assuming constant velocity = 1.15 V_stall_land = V
 s_land_roll = N_freeroll * V
 
+m_fuel_freeroll = (
+    (P_ICE_Idle * (uav.BSFC_ICE_low / 3600.0)) * N_freeroll / 1000.0
+)  # kg
+m -= m_fuel_freeroll
+
 t = N_freeroll
 Phase_Success = True
+
+
+if m > uav.max_landing_mass:
+    print(
+        f"Structural Limit Exceeded: Landing weight {m:.2f} kg exceeds Maximum Landing Weight ({uav.max_landing_mass} kg)"
+    )
+    Phase_Success = False
+
 
 while V > 0:
     D = 0.5 * rho * V**2 * uav.S * Cd
@@ -45,13 +58,21 @@ while V > 0:
     net_F = -(D + mu_r * (m * 9.81 - L)) # -ve decelerating
     a_net = net_F/m
 
-    V += a_net * t_step
-    if V <= 0.0:
+
+    if V + a_net * t_step <= 0.0:
+        dt_stop = -V / a_net  # Exact fractional time to stop (V / |a|)
+        s_land_roll += 0.5 * (V**2) / abs(a_net)  # Exact remaining distance
+        t += dt_stop
+        m -= (
+            (P_ICE_Idle * (uav.BSFC_ICE_low / 3600.0)) * dt_stop / 1000.0
+        )  # Exact fuel
         V = 0.0
         break
-    t += t_step
-    s_land_roll += V * t_step
 
+    s_land_roll += V * t_step
+    V += a_net * t_step
+    t += t_step
+    
     m_fuel = (P_ICE_Idle * (uav.BSFC_ICE_low / 3600)) * t_step / 1000  # kg
     m -= m_fuel
 
@@ -67,6 +88,8 @@ while V > 0:
         print("Touchdown failed: maximum permissible ground roll exceeded.")
         Phase_Success = False
         break
+
+        
 
 if Phase_Success:
     print(f'''

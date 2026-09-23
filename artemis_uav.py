@@ -75,3 +75,7 @@ eta_discharge = 0.9 # battery discharge efficiency
 eta_charging = 0.95 # battery charging efficiency
 
 eta_alternator = 0.8  # Alternator efficiency (engine to electrical)
+
+# Landing characteristics
+max_landing_mass_percent = 90  # %
+max_landing_mass = (max_landing_mass_percent/100) * MTOW

@@ -19,12 +19,11 @@ mass_motor = power_motor / uav.specific_power_motor #kg
 mass_inverter = power_inverter / uav.specific_power_inverter #kg
 mass_electric_hardware = mass_motor + mass_inverter
 
-mass_cells = battery_capacity / uav.specific_energy_battery #kg
+mass_cells = battery_capacity * 1000 / uav.specific_energy_battery #kg
 mass_battery_pack = uav.k_bat_pack * mass_cells #kg
 
 mass_fuel_system = uav.M_power_pack - (mass_battery_pack + mass_electric_hardware) #kg
 mass_fuel = mass_fuel_system / uav.k_fuel_sys #kg
-
 
 
 if mass_fuel > 0:

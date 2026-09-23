@@ -36,7 +36,7 @@ eta_prop = 0.68
 P_available = P_shaft_prop * eta_prop  # kW
 
 theta = 6.5 # degrees, climb angle
-Cd_0_p1 = uav.Cd_0 + ms.delta_CD_0
+Cd_0_p1 = uav.Cd_0 + ms.delta_CD_0 + ms.delta_CD_0_flap
 
 V = to.V  # m/s
 s_roll = to.s_roll  # m
@@ -56,9 +56,7 @@ while h < ms.obstacle_height:
     V = V + a_net * t_step  # m/s
     h = h + V * math.sin(math.radians(theta)) * t_step  # m
     t = t + t_step  # seconds
-
-    if h < ms.obstacle_height:
-            s_roll = s_roll + V * math.cos(math.radians(theta)) * t_step  # m
+    s_roll = s_roll + V * math.cos(math.radians(theta)) * t_step  # m
 
     m_fuel = (P_ICE * (uav.BSFC_ICE_max / 3600)) * t_step / 1000  # kg
     elec_energy_used = ((P_electric/(uav.eta_inverter*uav.eta_motor*uav.eta_discharge)) * t_step) / 3600  # kWh
@@ -66,7 +64,7 @@ while h < ms.obstacle_height:
     SoC = SoC - (elec_energy_used / ms.battery_capacity)
     m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_max / 3600) * t_step / 1000)  # kg
 
-    if h < ms.obstacle_height and s_roll > ms.max_permissible_sroll:
+    if h < ms.obstacle_height and s_roll > ms.max_permissible_stot:
         print('''
         Error: Ground roll distance exceeded maximum permissible limit.
         MISSION FAILED.

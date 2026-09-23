@@ -110,7 +110,7 @@ print("\n")
 
 m_fuel_burned = m_inital - m
 
-if dist_covered >= ms.cruise_distance:
+if dist_covered >= ms.cruise_distance - (cc.s_hor)/1000:
     print(f'''
     -------Cruise Out Successful-------
     Distance covered: {dist_covered:.2f} km, 
@@ -125,7 +125,7 @@ if dist_covered >= ms.cruise_distance:
 else:
 
     print(f'''
-    -------Cruise Out Successful-------
+    -------Cruise Out Failed-------
     Distance covered: {dist_covered:.2f} km, 
     Time: {time_cruise/60:.2f} min, 
     Final Mass: {m:.2f} kg, 

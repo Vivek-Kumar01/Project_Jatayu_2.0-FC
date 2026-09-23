@@ -77,9 +77,9 @@ while V < V_LO:
 s_roll = s_roll + N*V_LO
 
 m_fuel = (P_ICE * (uav.BSFC_ICE_max / 3600)) * N / 1000  # kg
-m = m - m_fuel
+m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_max / 3600) * t_step / 1000)
 
-elec_energy_used = ((P_electric/(uav.eta_inverter*uav.eta_motor)) * N) / 3600  # kWh
+elec_energy_used = ((P_electric/(uav.eta_inverter*uav.eta_motor*uav.eta_discharge)) * N) / 3600  # kWh
 SoC = SoC - (elec_energy_used / ms.battery_capacity)
 
 if s_roll > ms.max_permissible_sroll:

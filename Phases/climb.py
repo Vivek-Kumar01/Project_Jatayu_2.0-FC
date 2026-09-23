@@ -8,9 +8,9 @@ m_initial = pu.m
 m = pu.m  # Initial mass of the UAV after pull-up
 SoC = pu.SoC  # Initial state of charge for battery pack
 
-t_step = 0.1  # seconds
+t_step = 0.5  # seconds
 
-h_target = ms.cruise_altitude/2  # m
+h_target = h_target = ms.altitude_takeoff + (ms.cruise_altitude - ms.altitude_takeoff) / 2.0  # m
 
 P_ICE_avionics = ms.power_avionics / uav.eta_alternator  # kW
 P_electric_full = (min(ms.power_battery_discharge, ms.power_inverter/uav.eta_inverter))*uav.eta_inverter*uav.eta_motor  # kW
