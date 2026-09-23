@@ -5,7 +5,8 @@ import mission_settings as ms
 
 
 # Take-off simulation setting
-rho = Atmosphere(ms.altitude_takeoff).density[0]  # kg/m^3
+h = ms.altitude_takeoff
+rho = Atmosphere(h).density[0]  # kg/m^3
 t_step = 0.1  # seconds
 
 P_ICE_full = uav.P_ICE_rated * ((1.132 * rho / Atmosphere(0).density[0]) - 0.132)  # kW
@@ -29,7 +30,7 @@ Static_thrust = (Merit_Factor**(2/3)) * (2 * rho * (math.pi /4 * uav.D_prop**2) 
 
 N = 1 # seconds after rotation on ground roll
 V_stall = math.sqrt((2 * uav.MTOW * 9.81) / (rho * uav.S * uav.Cl_max_ground_TO))  # m/s
-V_LO = 1.1 * V_stall  # m/s
+V_LO = 1.15 * V_stall  # m/s
 
 prop_eff_liftoff = 0.65
 Thrust_liftoff = prop_eff_liftoff * P_shaft_prop * 1000 / V_LO  # N
@@ -88,6 +89,7 @@ else:
     -------Takeoff Successful-------
     P_ICE: {P_ICE:.2f} kW, P_electric: {P_electric:.2f} kW, DoH: {DoH:.2f}
     Total ground roll distance: {s_roll:.2f} m
+    Lift off velocity: {V_LO:.2f} m/s
     Time taken to reach lift off speed: {t + N:.2f} seconds
     Fuel burned during takeoff: {(uav.MTOW - m)*1000:.2f} g
     Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg

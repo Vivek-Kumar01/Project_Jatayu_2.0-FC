@@ -40,31 +40,22 @@ else:
 
 # Take off constraints
 altitude_takeoff = 0.0  # Takeoff altitude (m)
-obstacle_height = 15.0  # 50 ft screen height (m)
+obstacle_height = altitude_takeoff + 15.0  # 50 ft screen height from sea level (m)
 max_permissible_sroll = 600.0  # Max allowable ground roll (m)
 max_permissible_stot = 1000.0  # Max total distance over 15 m obstacle (m)
 
 rolling_friction_coefficient = 0.04  # Rolling friction coefficient for takeoff ground roll
 
 k_uc = 3.16 * (10**-5)
-delta_CD_0 = (uav.MTOW / uav.S)*k_uc*(uav.MTOW**-0.215)
+delta_CD_0 = (uav.MTOW * 9.81/ uav.S)*k_uc*(uav.MTOW**-0.215)
+delta_CD_0_flap = 0.0095
 G = (16 * uav.h / uav.b)**2 / (1 + (16 * uav.h / uav.b)**2)
-CD_takeoff = uav.Cd_0 + delta_CD_0 + (uav.k1 + G * uav.k3) * (uav.Cl_ground**2)
-
-# Climb
-
+K_grd = (uav.k1 + G * uav.k3)
+CD_takeoff = uav.Cd_0 + delta_CD_0 + delta_CD_0_flap + K_grd * (uav.Cl_ground**2)
 
 # Cruise Out and In
 cruise_altitude = 3000 #m
 cruise_distance = 150 #km
 
-
 # Loiter
 loiter_altitude = cruise_altitude #m
-
-# Descent
-
-
-
-# Landing
-

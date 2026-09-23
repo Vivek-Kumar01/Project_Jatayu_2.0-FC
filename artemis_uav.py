@@ -30,9 +30,9 @@ K = k1 + k3 # induced drag factor in drag polar equation
 Cd_0 = 0.022 # zero-lift parasitic drag coefficient
 Cl_ground = 0.35
 Cl_max_ground_TO = 1.25
-Cl_max_TO = 1.8
-Cl_max_Land = 2
-Cl_max_clean = 1.5
+Cl_max_TO = 1.7
+Cl_max_Land = 1.85
+Cl_max_clean = 1.4
 D_prop = 1.75 #m
 N_prop = 2400 #RPM (constant speed propeller)
 
@@ -44,7 +44,7 @@ N_ICE_rated = 3800.0  # RPM (Engine crankshaft speed at rated power)
 # ) / (  # ~150.8 N·m
 #     2 * 3.14159 * (N_ICE_rated / 60.0)
 # )
-BSFC_ICE_low = 270.0  # g/kWh (BSFC at low power)
+BSFC_ICE_low = 340  # g/kWh (BSFC at low power)
 BSFC_ICE_opt = 225.0  # g/kWh (Optimal cruise BSFC on Jet-A/diesel)
 BSFC_ICE_max = 245.0  # g/kWh (BSFC at 100% rated power at sea level)
 # V_disp = 1.8  # Litres (Swept displacement ~1.6 - 2.0 L for 60 kW NA CI)

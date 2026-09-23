@@ -31,12 +31,13 @@ percent_electric_power = 0.05 # Percentage of electric power
 
 Loiter_Phase_Status = True
 
-cl_loiter = math.sqrt(3 * uav.Cd_0 / uav.K)
+safe_margin = 1.25 # Ratio of loiter to stall velocity (as cal by Cl_max_clean)
+cl_loiter = uav.Cl_max_clean / (safe_margin)**2
 cd_loiter = uav.Cd_0 + uav.K * cl_loiter**2
 
 
 while m > min_mass_cruisein:
-    vel_loiter = (2 * m * 9.81 / (rho * uav.S) * (uav.K / (3*uav.Cd_0))**0.5)**0.5  # m/s
+    vel_loiter = (2 * m * 9.81 / (rho * uav.S * cl_loiter))**0.5  # m/s
     D_loiter = 0.5 * rho * vel_loiter**2 * uav.S * cd_loiter
     P_prop_req = D_loiter * vel_loiter / 1000  # kW
     P_shaft_prop = P_prop_req / n_prop  # kW

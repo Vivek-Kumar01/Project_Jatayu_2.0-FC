@@ -2,7 +2,7 @@ import math
 from ambiance import Atmosphere
 import artemis_uav as uav
 import mission_settings as ms
-
+import Phases.cruise_climb as cc
 
 # Cruise Out simulation setting
 t_step = 1.0  # seconds
@@ -18,15 +18,15 @@ P_electric_full = (min(ms.power_battery_discharge, ms.power_inverter/uav.eta_inv
 n_prop = 0.76  # Propeller efficiency
 
 dist_covered = 0.0  # km
-m_inital = 997 # kg
+m_inital = cc.m # kg
 m = m_inital  # kg
-SoC = 0.5
+SoC = cc.SoC
 time_cruise = 0.0  # seconds
 
 cl_cruise = math.sqrt(uav.Cd_0 / uav.K)
 cd_cruise = uav.Cd_0 + uav.K * cl_cruise**2
 
-while dist_covered < ms.cruise_distance:
+while dist_covered < ms.cruise_distance - (cc.s_hor)/1000:
     vel_cruise = (2 * m * 9.81 / (rho * uav.S) * (uav.K / uav.Cd_0)**0.5)**0.5  # m/s
     D_cruise = 0.5 * rho * vel_cruise**2 * uav.S * cd_cruise
     P_prop_req = D_cruise * vel_cruise / 1000  # kW
@@ -125,7 +125,7 @@ if dist_covered >= ms.cruise_distance:
 else:
 
     print(f'''
-    -------Cruise Out Failed-------
+    -------Cruise Out Successful-------
     Distance covered: {dist_covered:.2f} km, 
     Time: {time_cruise/60:.2f} min, 
     Final Mass: {m:.2f} kg, 

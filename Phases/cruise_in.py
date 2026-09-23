@@ -5,6 +5,8 @@ import mission_settings as ms
 import Phases.loiter as lo
 
 
+descent_dist = 50 #km
+
 # Cruise In simulation setting
 t_step = 1.0  # seconds
 rho = Atmosphere(ms.cruise_altitude).density[0]  # kg/m^3
@@ -29,7 +31,7 @@ percent_electric_power = 0.1 # Percentage of electric power
 cl_cruise = math.sqrt(uav.Cd_0 / uav.K)
 cd_cruise = uav.Cd_0 + uav.K * cl_cruise**2
 
-while dist_covered < ms.cruise_distance:
+while dist_covered < ms.cruise_distance - descent_dist:
     vel_cruise = (2 * m * 9.81 / (rho * uav.S) * (uav.K / uav.Cd_0)**0.5)**0.5  # m/s
     D_cruise = 0.5 * rho * vel_cruise**2 * uav.S * cd_cruise
     P_prop_req = D_cruise * vel_cruise / 1000  # kW
@@ -92,7 +94,7 @@ while dist_covered < ms.cruise_distance:
 
 m_fuel_burned = m_inital - m
 
-if dist_covered >= ms.cruise_distance:
+if dist_covered >= ms.cruise_distance - descent_dist:
     print(f'''
     -------Cruise In Successful-------
     Distance covered: {dist_covered:.2f} km, 
