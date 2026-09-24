@@ -115,7 +115,7 @@ if Phase_Success:
     Final Mass: {m:.2f} kg, 
     Total Fuel Burned (Final Approach + Flare): {(m_initial - m)*1000:.2f} g,
     Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg, 
-    Final SoC: {SoC:.2f}
+    Final SoC: {SoC*100:.2f} %
     Final Velocity: {V:.2f} m/s,
 ''')
 
@@ -131,6 +131,6 @@ if not Phase_Success:
     Final Mass: {m:.2f} kg, 
     Total Fuel Burned (Final Approach + Flare): {(m_initial - m)*1000:.2f} g,
     Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg, 
-    Final SoC: {SoC:.2f}
+    Final SoC: {SoC*100:.2f} %
     Final Velocity: {V:.2f} m/s,
 ''')

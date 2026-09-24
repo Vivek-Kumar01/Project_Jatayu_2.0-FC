@@ -100,7 +100,7 @@ if Phase_Success:
     Time taken to stop: {t:.2f} seconds
     Fuel burned during landing: {(m_initial - m)*1000:.2f} g
     Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg
-    Final Battery SoC: {SoC:.2f}
+    Final Battery SoC: {SoC*100:.2f} %
 ''')
 
 if not Phase_Success:
@@ -112,6 +112,6 @@ if not Phase_Success:
     Time taken to stop: {t:.2f} seconds
     Fuel burned during landing: {(m_initial - m)*1000:.2f} g
     Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg
-    Final Battery SoC: {SoC:.2f}
+    Final Battery SoC: {SoC*100:.2f} %
 ''')
     

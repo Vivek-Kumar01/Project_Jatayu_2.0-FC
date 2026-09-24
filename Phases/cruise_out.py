@@ -118,7 +118,7 @@ if dist_covered >= ms.cruise_distance - (cc.s_hor)/1000:
     Final Mass: {m:.2f} kg, 
     Fuel Burned: {m_fuel_burned:.2f} kg,
     Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg,
-    Final SoC: {SoC:.2f}
+    Final SoC: {SoC*100:.2f} %
     Final Velocity: {vel_cruise:.2f} m/s,
 ''')
 
@@ -131,7 +131,7 @@ else:
     Final Mass: {m:.2f} kg, 
     Fuel Burned: {m_fuel_burned:.2f} kg,
     Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg,
-    Final SoC: {SoC:.2f}
+    Final SoC: {SoC*100:.2f} %
     Final Velocity: {vel_cruise:.2f} m/s,
 ''')
 

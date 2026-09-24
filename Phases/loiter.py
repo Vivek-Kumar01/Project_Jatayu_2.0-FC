@@ -101,7 +101,7 @@ if Loiter_Phase_Status:
     -------Loiter Successful-------
     Endurance: {endurance/3600:.2f} hours
     Final Mass: {m:.2f} kg
-    Final SoC: {SoC:.2f}
+    Final SoC: {SoC*100:.2f} %
     Final Velocity: {vel_loiter:.2f} m/s
     Fuel Burned: {m_inital - m:.2f} kg
     Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg
@@ -112,7 +112,7 @@ else:
     -------Loiter Failed-------
     Endurance: {endurance/3600:.2f} hours
     Final Mass: {m:.2f} kg
-    Final SoC: {SoC:.2f}
+    Final SoC: {SoC*100:.2f} %
     Final Velocity: {vel_loiter:.2f} m/s
     Fuel Burned: {m_inital - m:.2f} kg
     Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg

@@ -83,7 +83,8 @@ while h < h_target:
 if phase_success:
     print(f'''
     -------Cruise Climb Successful-------
-    Total climb time: {t:.2f} seconds
+    EOP P_ICE: {P_ICE:.2f} kW, P_electric: {P_elec:.2f} kW
+    Total climb time: {t/60:.2f} mins
     Final speed: {V:.2f} m/s
     Horizontal distance travelled: {s_hor/1000:.2f} km
     Fuel burned: {m_initial - m:.2f} kg
@@ -94,7 +95,8 @@ if phase_success:
 if not phase_success:
     print(f'''
     -------Cruise Climb Failed-------
-    Total climb time: {t:.2f} seconds
+    EOP P_ICE: {P_ICE:.2f} kW, P_electric: {P_elec:.2f} kW
+    Total climb time: {t/60:.2f} mins
     Final speed: {V:.2f} m/s
     Horizontal distance travelled: {s_hor/1000:.2f} km
     Fuel burned: {m_initial - m:.2f} kg
