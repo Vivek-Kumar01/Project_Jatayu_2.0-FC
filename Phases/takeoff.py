@@ -61,6 +61,10 @@ while V < V_LO:
     SoC = SoC - (elec_energy_used / ms.battery_capacity)
     m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_max / 3600) * t_step / 1000)  # kg
 
+    # --- TELEMETRY LOGGING (Step) ---
+    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+    P_req = (D * V) / 1000.0  # kW
+    ms.log_telemetry(t, 'Takeoff', h, V, P_req, P_ICE, P_electric, fuel_remaining, SoC)
 
     if s_roll > ms.max_permissible_sroll:
         print("Takeoff failed: maximum permissible ground roll exceeded.")
@@ -81,6 +85,11 @@ m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_max / 3600) * t_step / 1000)
 
 elec_energy_used = ((P_electric/(uav.eta_inverter*uav.eta_motor*uav.eta_discharge)) * N) / 3600  # kWh
 SoC = SoC - (elec_energy_used / ms.battery_capacity)
+
+# --- TELEMETRY LOGGING (Post-Rotation) ---
+fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+P_req = (0.5 * rho * V_LO**2 * uav.S * ms.CD_takeoff * V_LO) / 1000.0  # kW
+ms.log_telemetry(t + N, 'Takeoff_Rotation', h, V_LO, P_req, P_ICE, P_electric, fuel_remaining, SoC)
 
 if s_roll > ms.max_permissible_sroll:
     print("Takeoff failed: maximum permissible ground roll exceeded.")

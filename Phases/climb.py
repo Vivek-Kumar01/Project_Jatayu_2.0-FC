@@ -27,6 +27,8 @@ phase_success = True
 h = pu.h # m
 s_hor = 0
 
+t_baseline = pu.to.t + pu.to.N + pu.t  # Continuous time elapsed prior to climb
+
 while h < h_target:
     rho = Atmosphere(h).density[0]  # kg/m^3
 
@@ -58,6 +60,11 @@ while h < h_target:
 
     SoC = SoC - (elec_energy_used / ms.battery_capacity)
     m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_max / 3600) * t_step / 1000)  # kg
+
+    # --- TELEMETRY LOGGING (Climb) ---
+    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+    cumulative_time = t_baseline + t
+    ms.log_telemetry(cumulative_time, 'Climb', h, V, P_req / 1000.0, P_ICE, P_elec, fuel_remaining, SoC)
 
     if SoC < ms.SoC_min:
         print('''

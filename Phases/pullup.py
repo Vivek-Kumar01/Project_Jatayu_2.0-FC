@@ -64,6 +64,12 @@ while h < ms.obstacle_height:
     SoC = SoC - (elec_energy_used / ms.battery_capacity)
     m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_max / 3600) * t_step / 1000)  # kg
 
+    # --- TELEMETRY LOGGING (Pull-Up) ---
+    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+    P_req = (D * V) / 1000.0  # kW
+    cumulative_time = (to.t + to.N) + t
+    ms.log_telemetry(cumulative_time, 'Pull_Up', h, V, P_req, P_ICE, P_electric, fuel_remaining, SoC)
+
     if h < ms.obstacle_height and s_roll > ms.max_permissible_stot:
         print('''
         Error: Ground roll distance exceeded maximum permissible limit.

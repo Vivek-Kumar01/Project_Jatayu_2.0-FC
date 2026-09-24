@@ -46,6 +46,8 @@ s_hor = 0
 
 Phase_Success = True
 
+t_baseline = ds.t_baseline + ds.t  # Continuous cumulative time elapsed before approach
+
 while V > V_target:
     rho = Atmosphere(h).density[0]  # kg/m^3
     Cl = (m * 9.81) / (0.5 * rho * V**2 * uav.S)
@@ -60,6 +62,12 @@ while V > V_target:
 
     m_fuel = (P_ICE_Idle * (uav.BSFC_ICE_low / 3600)) * t_step / 1000  # kg
     m -= m_fuel
+
+    # --- TELEMETRY LOGGING (Approach Deceleration) ---
+    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+    P_req = (D * V) / 1000.0  # kW
+    cumulative_time = t_baseline + t
+    ms.log_telemetry(cumulative_time, 'Approach_Decel', h, V, P_req, P_ICE_Idle, 0.0, fuel_remaining, SoC)
 
     if m < uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel):
         print('''
@@ -104,6 +112,12 @@ while h > h_target:
     s_hor += V * math.cos(theta) * t_step
     t += t_step
 
+    # --- TELEMETRY LOGGING (Approach Glideslope) ---
+    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+    P_req = (D * V) / 1000.0  # kW
+    P_ICE_current = (P_ICE_prop / 1000.0) + P_ICE_avionics
+    cumulative_time = t_baseline + t
+    ms.log_telemetry(cumulative_time, 'Approach_Glide', h, V, P_req, P_ICE_current, 0.0, fuel_remaining, SoC)
 
     if m < uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel):
         print('''

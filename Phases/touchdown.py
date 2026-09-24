@@ -44,6 +44,7 @@ m -= m_fuel_freeroll
 t = N_freeroll
 Phase_Success = True
 
+t_baseline = fl.t_baseline + fl.t_app + fl.t_flare  # Continuous cumulative time elapsed before touchdown
 
 if m > uav.max_landing_mass:
     print(
@@ -67,6 +68,11 @@ while V > 0:
             (P_ICE_Idle * (uav.BSFC_ICE_low / 3600.0)) * dt_stop / 1000.0
         )  # Exact fuel
         V = 0.0
+
+        # --- TELEMETRY LOGGING (Full Stop Datum) ---
+        fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+        cumulative_time = t_baseline + t
+        ms.log_telemetry(cumulative_time, 'Mission_Complete', h, 0.0, 0.0, P_ICE_Idle, 0.0, fuel_remaining, SoC)
         break
 
     s_land_roll += V * t_step
@@ -75,6 +81,12 @@ while V > 0:
     
     m_fuel = (P_ICE_Idle * (uav.BSFC_ICE_low / 3600)) * t_step / 1000  # kg
     m -= m_fuel
+
+    # --- TELEMETRY LOGGING (Braking Rollout) ---
+    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+    P_req = (D * V) / 1000.0  # kW
+    cumulative_time = t_baseline + t
+    ms.log_telemetry(cumulative_time, 'Landing_Rollout', h, V, P_req, P_ICE_Idle, 0.0, fuel_remaining, SoC)
 
     if m < uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel):
         print('''

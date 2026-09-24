@@ -35,6 +35,8 @@ h = ms.cruise_altitude
 
 Phase_Success = True
 
+t_baseline = ci.t_baseline + ci.time_cruise  # Continuous cumulative time elapsed before descent
+
 while h > h_target:
     rho = Atmosphere(h).density[0]  # kg/m^3
     Cl = (m * 9.81) / (0.5 * rho * V**2 * uav.S)
@@ -51,6 +53,11 @@ while h > h_target:
 
     m_fuel = (P_ICE_Idle * (uav.BSFC_ICE_low / 3600)) * t_step / 1000  # kg
     m -= m_fuel
+
+    # --- TELEMETRY LOGGING (Descent) ---
+    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+    cumulative_time = t_baseline + t
+    ms.log_telemetry(cumulative_time, 'Descent', h, V, P_req / 1000.0, P_ICE_Idle, 0.0, fuel_remaining, SoC)
 
     if m < uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel):
         print('''

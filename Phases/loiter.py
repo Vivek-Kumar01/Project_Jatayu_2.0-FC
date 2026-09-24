@@ -35,6 +35,7 @@ safe_margin = 1.25 # Ratio of loiter to stall velocity (as cal by Cl_max_clean)
 cl_loiter = uav.Cl_max_clean / (safe_margin)**2
 cd_loiter = uav.Cd_0 + uav.K * cl_loiter**2
 
+t_baseline = co.t_baseline + co.time_cruise  # Continuous cumulative time elapsed before loiter
 
 while m > min_mass_cruisein:
     vel_loiter = (2 * m * 9.81 / (rho * uav.S * cl_loiter))**0.5  # m/s
@@ -95,6 +96,11 @@ while m > min_mass_cruisein:
         break
 
     endurance = endurance + t_step  # seconds
+
+    # --- TELEMETRY LOGGING (Loiter) ---
+    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+    cumulative_time = t_baseline + endurance
+    ms.log_telemetry(cumulative_time, 'Loiter', ms.loiter_altitude, vel_loiter, P_prop_req, P_ICE, P_electric, fuel_remaining, SoC)
 
 if Loiter_Phase_Status:
     print(f'''

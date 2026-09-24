@@ -31,6 +31,9 @@ percent_electric_power = 0.1 # Percentage of electric power
 cl_cruise = math.sqrt(uav.Cd_0 / uav.K)
 cd_cruise = uav.Cd_0 + uav.K * cl_cruise**2
 Phase_Success = True
+
+t_baseline = lo.t_baseline + lo.endurance  # Continuous cumulative time elapsed before cruise in
+
 while dist_covered < ms.cruise_distance - descent_dist:
     vel_cruise = (2 * m * 9.81 / (rho * uav.S) * (uav.K / uav.Cd_0)**0.5)**0.5  # m/s
     D_cruise = 0.5 * rho * vel_cruise**2 * uav.S * cd_cruise
@@ -96,6 +99,11 @@ while dist_covered < ms.cruise_distance - descent_dist:
 
     dist_covered = dist_covered + (vel_cruise * t_step) / 1000  # km
     time_cruise = time_cruise + t_step  # seconds
+
+    # --- TELEMETRY LOGGING (Cruise In) ---
+    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+    cumulative_time = t_baseline + time_cruise
+    ms.log_telemetry(cumulative_time, 'Cruise_In', ms.cruise_altitude, vel_cruise, P_prop_req, P_ICE, P_electric, fuel_remaining, SoC)
 
 m_fuel_burned = m_inital - m
 

@@ -26,7 +26,11 @@ time_cruise = 0.0  # seconds
 cl_cruise = math.sqrt(uav.Cd_0 / uav.K)
 cd_cruise = uav.Cd_0 + uav.K * cl_cruise**2
 
+t_baseline = cc.t_baseline + cc.t  # Continuous cumulative time elapsed before cruise out
+
 while dist_covered < ms.cruise_distance - (cc.s_hor)/1000:
+    P_elec_log = 0.0  # Track electrical power for logging (-ve for charging, +ve for discharging)
+
     vel_cruise = (2 * m * 9.81 / (rho * uav.S) * (uav.K / uav.Cd_0)**0.5)**0.5  # m/s
     D_cruise = 0.5 * rho * vel_cruise**2 * uav.S * cd_cruise
     P_prop_req = D_cruise * vel_cruise / 1000  # kW
@@ -58,10 +62,13 @@ while dist_covered < ms.cruise_distance - (cc.s_hor)/1000:
             m_fuel = (P_ICE * (uav.BSFC_ICE_max / 3600)) * t_step / 1000  # kg
             m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_max / 3600) * t_step / 1000)
 
+            P_elec_log = -P_charging  # Negative denotes generator feeding power into pack
         else:
             P_ICE = P_shaft_prop / uav.eta_gearbox_ICE  # kW
             m_fuel = (P_ICE * (uav.BSFC_ICE_max / 3600)) * t_step / 1000  # kg
             m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_max / 3600) * t_step / 1000)
+
+            P_elec_log = 0.0
 
     elif P_shaft_prop > P_ICE_full * uav.eta_gearbox_ICE:
         P_ICE = P_ICE_full  # kW
@@ -88,6 +95,8 @@ while dist_covered < ms.cruise_distance - (cc.s_hor)/1000:
         m_fuel = (P_ICE * (uav.BSFC_ICE_max / 3600)) * t_step / 1000  # kg
         m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_max / 3600) * t_step / 1000)
 
+        P_elec_log = P_electric  # Positive denotes battery discharge assist
+
     if SoC < ms.SoC_min:
         print('''
         Error: Battery SoC dropped below minimum.
@@ -105,7 +114,11 @@ while dist_covered < ms.cruise_distance - (cc.s_hor)/1000:
     dist_covered = dist_covered + (vel_cruise * t_step) / 1000  # km
     time_cruise = time_cruise + t_step  # seconds
 
-
+    # --- TELEMETRY LOGGING (Cruise Out) ---
+    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+    cumulative_time = t_baseline + time_cruise
+    ms.log_telemetry(cumulative_time, 'Cruise_Out', ms.cruise_altitude, vel_cruise, P_prop_req, P_ICE, P_elec_log, fuel_remaining, SoC)
+    
 print("\n")
 
 m_fuel_burned = m_inital - m

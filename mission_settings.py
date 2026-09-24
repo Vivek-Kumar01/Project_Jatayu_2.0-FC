@@ -186,4 +186,30 @@ cruise_distance = 150 #km
 loiter_altitude = cruise_altitude #m
 
 
+# ==============================================================================
+# MISSION TELEMETRY RECORDER (For Visualisation & Optimization Sweeps)
+# ==============================================================================
+telemetry = {
+    'time_s': [],
+    'phase': [],
+    'altitude_m': [],
+    'velocity_ms': [],
+    'P_req_kW': [],  # Aerodynamic Drag * Velocity / Prop_eff
+    'P_ICE_kW': [],
+    'P_EM_kW': [],
+    'fuel_mass_kg': [],
+    'battery_soc': [],
+}
 
+
+def log_telemetry(t, phase, alt, v, p_req, p_ice, p_em, fuel, soc):
+  """Appends one instantaneous simulation step to the telemetry log."""
+  telemetry['time_s'].append(t)
+  telemetry['phase'].append(phase)
+  telemetry['altitude_m'].append(alt)
+  telemetry['velocity_ms'].append(v)
+  telemetry['P_req_kW'].append(p_req)
+  telemetry['P_ICE_kW'].append(p_ice)
+  telemetry['P_EM_kW'].append(p_em)
+  telemetry['fuel_mass_kg'].append(fuel)
+  telemetry['battery_soc'].append(soc)

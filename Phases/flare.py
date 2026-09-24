@@ -32,6 +32,8 @@ s_hor_app = 0
 t_app = 0
 Phase_Success = True
 
+t_baseline = ap.t_baseline + ap.t  # Continuous cumulative time elapsed before final approach
+
 while h > ms.altitude_takeoff + h_flare:
     rho = Atmosphere(h).density[0]  # kg/m^3
     P_ICE_full = uav.P_ICE_rated * ((1.132 * rho / Atmosphere(0).density[0]) - 0.132)  # kW
@@ -61,6 +63,12 @@ while h > ms.altitude_takeoff + h_flare:
     s_hor_app += V * math.cos(theta) * t_step
     t_app += t_step
 
+    # --- TELEMETRY LOGGING (Final Approach) ---
+    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+    P_req = (D * V) / 1000.0  # kW
+    P_ICE_current = (P_ICE_prop / 1000.0) + P_ICE_avionics
+    cumulative_time = t_baseline + t_app
+    ms.log_telemetry(cumulative_time, 'Final_Approach', h, V, P_req, P_ICE_current, 0.0, fuel_remaining, SoC)
 
     if m < uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel):
         print('''
@@ -95,6 +103,13 @@ m -= m_fuel
 
 V = 1.15 * ap.V_stall_land
 h = ms.altitude_takeoff
+
+# --- TELEMETRY LOGGING (Touchdown Instant at Runway Datum) ---
+fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+D_flare = 0.5 * Atmosphere(h).density[0] * V**2 * uav.S * (Cd0_land + uav.K * ((m * 9.81)/(0.5 * Atmosphere(h).density[0] * V**2 * uav.S))**2)
+P_req_flare = (D_flare * V) / 1000.0
+cumulative_time = t_baseline + t_app + t_flare
+ms.log_telemetry(cumulative_time, 'Flare_Touchdown', h, V, P_req_flare, P_ICE_Idle, 0.0, fuel_remaining, SoC)
 
 if m < uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel):
     print('''
