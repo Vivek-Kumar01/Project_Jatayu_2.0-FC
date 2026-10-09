@@ -91,7 +91,9 @@ fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
 P_req = (0.5 * rho * V_LO**2 * uav.S * ms.CD_takeoff * V_LO) / 1000.0  # kW
 ms.log_telemetry(t + N, 'Takeoff_Rotation', h, V_LO, P_req, P_ICE, P_electric, fuel_remaining, SoC)
 
-if s_roll > ms.max_permissible_sroll:
+Phase_Success = s_roll < ms.max_permissible_sroll
+
+if not Phase_Success:
     print("Takeoff failed: maximum permissible ground roll exceeded.")
 else:
     print(f'''

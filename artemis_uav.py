@@ -56,6 +56,8 @@ specific_power_inverter = 12.0  # kW/kg (High-voltage SiC inverter)
 specific_energy_battery = (
     200.0  # Wh/kg (Pack-level Li-ion / NMC cells with BMS & casing)
 )
+sp_power_DCDC = 0.50         # kW/kg (Mil-COTS isolated high-voltage aerospace standard)
+
 # Overhead factors
 k_bat_pack = 1.18  # 18% overhead for module casing, BMS, busbars, cooling
 k_fuel_sys = 1.05  # 5% overhead for wing bladders, pumps, baffles, unusable trapped fuel
@@ -75,6 +77,7 @@ eta_discharge = 0.9 # battery discharge efficiency
 eta_charging = 0.95 # battery charging efficiency
 
 eta_alternator = 0.8  # Alternator efficiency (engine to electrical)
+eta_DCDC_conv = 0.95 # DCDC converter efficiency
 
 # Landing characteristics
 max_landing_mass_percent = 90  # %

@@ -42,7 +42,7 @@ V = to.V  # m/s
 s_roll = to.s_roll  # m
 t = 0
 
-phase_success = True
+Phase_Success = True
 
 while h < ms.obstacle_height:
     L = m * 9.81 * math.cos(math.radians(theta))  # N
@@ -75,7 +75,7 @@ while h < ms.obstacle_height:
         Error: Ground roll distance exceeded maximum permissible limit.
         MISSION FAILED.
         ''')
-        phase_success = False
+        Phase_Success = False
         break
 
     if SoC < ms.SoC_min:
@@ -83,7 +83,7 @@ while h < ms.obstacle_height:
         Error: Battery state of charge dropped below minimum limit.
         MISSION FAILED.
         ''')
-        phase_success = False
+        Phase_Success = False
         break
 
     if m < uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel):
@@ -91,11 +91,11 @@ while h < ms.obstacle_height:
         Error: Insufficient fuel remaining for mission.
         MISSION FAILED.
         ''')
-        phase_success = False
+        Phase_Success = False
         break
 
 
-if phase_success:
+if Phase_Success:
     print(f'''
     -------Pull Up Successful-------
     P_ICE: {P_ICE:.2f} kW, P_electric: {P_electric:.2f} kW, DoH: {DoH:.2f}
@@ -108,7 +108,7 @@ if phase_success:
     Remaining battery SoC: {SoC:.2%}
     ''')
 
-if not phase_success:
+if not Phase_Success:
     print(f'''
     -------Pull Up Failed-------
     P_ICE: {P_ICE:.2f} kW, P_electric: {P_electric:.2f} kW, DoH: {DoH:.2f}

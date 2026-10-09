@@ -9,6 +9,7 @@ reserve_fuel = 0.065 # Reserve fuel fraction for safety
 
 power_avionics = 0.35 #kW
 
+P_DCDC_rated = 0.50          # kW
 battery_capacity = 22 #kWh
 power_motor = 45 #kW
 power_inverter = power_motor #kW
@@ -17,7 +18,9 @@ power_battery_charge = uav.C_charge_continuous_safe * battery_capacity #kW
 
 mass_motor = power_motor / uav.specific_power_motor #kg
 mass_inverter = power_inverter / uav.specific_power_inverter #kg
-mass_electric_hardware = mass_motor + mass_inverter
+mass_DCDC = P_DCDC_rated / uav.sp_power_DCDC
+mass_electric_hardware = mass_motor + mass_inverter + mass_DCDC
+
 
 mass_cells = battery_capacity * 1000 / uav.specific_energy_battery #kg
 mass_battery_pack = uav.k_bat_pack * mass_cells #kg
@@ -158,6 +161,10 @@ else:
       f"  Total Installed W/P: {power_loading:>8.2f} kg/kW│  Avionics Base"
       f" Power:  {power_avionics:>8.2f} kW"
   )
+  print(
+        f"  Specific Power DC-DC: {uav.sp_power_DCDC:>8.2f} kW/kg│  DC-DC Rated"
+        f" Power:  {P_DCDC_rated:>8.2f} W"
+    )
   print("=" * 82)
   print(f"{'PRE-FLIGHT AUDIT VERIFIED: AIRCRAFT GO FOR FLIGHT':^82}")
   print("=" * 82 + "\n")

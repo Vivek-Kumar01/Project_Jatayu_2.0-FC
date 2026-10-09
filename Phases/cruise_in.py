@@ -34,7 +34,7 @@ Phase_Success = True
 
 t_baseline = lo.t_baseline + lo.endurance  # Continuous cumulative time elapsed before cruise in
 
-while dist_covered < ms.cruise_distance - descent_dist:
+while dist_covered < ms.cruise_distance - descent_dist - lo.standoff_distance/1000:
     vel_cruise = (2 * m * 9.81 / (rho * uav.S) * (uav.K / uav.Cd_0)**0.5)**0.5  # m/s
     D_cruise = 0.5 * rho * vel_cruise**2 * uav.S * cd_cruise
     P_prop_req = D_cruise * vel_cruise / 1000  # kW

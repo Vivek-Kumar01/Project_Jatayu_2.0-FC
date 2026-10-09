@@ -29,7 +29,7 @@ V = cl.V
 h = cl.h
 t = 0
 s_hor = cl.s_hor
-phase_success = True
+Phase_Success = True
 
 t_baseline = cl.t_baseline + cl.t  # Continuous cumulative time elapsed before cruise-climb
 
@@ -77,7 +77,7 @@ while h < h_target:
         Error: Battery state of charge dropped below minimum limit.
         MISSION FAILED.
         ''')
-        phase_success = False
+        Phase_Success = False
         break
 
     if m < uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel):
@@ -85,10 +85,10 @@ while h < h_target:
         Error: Insufficient fuel remaining for mission.
         MISSION FAILED.
         ''')
-        phase_success = False
+        Phase_Success = False
         break
 
-if phase_success:
+if Phase_Success:
     print(f'''
     -------Cruise Climb Successful-------
     EOP P_ICE: {P_ICE:.2f} kW, P_electric: {P_elec:.2f} kW
@@ -100,7 +100,7 @@ if phase_success:
     Remaining battery SoC: {SoC:.2%}
     ''')
 
-if not phase_success:
+if not Phase_Success:
     print(f'''
     -------Cruise Climb Failed-------
     EOP P_ICE: {P_ICE:.2f} kW, P_electric: {P_elec:.2f} kW

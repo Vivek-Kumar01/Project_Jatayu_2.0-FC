@@ -7,6 +7,7 @@ import Phases.cruise_climb as cc
 # Cruise Out simulation setting
 t_step = 1.0  # seconds
 rho = Atmosphere(ms.cruise_altitude).density[0]  # kg/m^3
+standoff_dist = 15 # km
 
 P_ICE_full = uav.P_ICE_rated * ((1.132 * rho / Atmosphere(0).density[0]) - 0.132)  # kW
 
@@ -28,7 +29,7 @@ cd_cruise = uav.Cd_0 + uav.K * cl_cruise**2
 
 t_baseline = cc.t_baseline + cc.t  # Continuous cumulative time elapsed before cruise out
 
-while dist_covered < ms.cruise_distance - (cc.s_hor)/1000:
+while dist_covered < ms.cruise_distance - (cc.s_hor)/1000 - standoff_dist:
     P_elec_log = 0.0  # Track electrical power for logging (-ve for charging, +ve for discharging)
 
     vel_cruise = (2 * m * 9.81 / (rho * uav.S) * (uav.K / uav.Cd_0)**0.5)**0.5  # m/s
@@ -122,8 +123,9 @@ while dist_covered < ms.cruise_distance - (cc.s_hor)/1000:
 print("\n")
 
 m_fuel_burned = m_inital - m
+Phase_Success = dist_covered >= ms.cruise_distance - (cc.s_hor)/1000  - standoff_dist
 
-if dist_covered >= ms.cruise_distance - (cc.s_hor)/1000:
+if Phase_Success:
     print(f'''
     -------Cruise Out Successful-------
     Distance covered: {dist_covered:.2f} km, 
