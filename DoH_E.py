@@ -9,8 +9,8 @@ import pandas as pd
 # Suppress the massive pre-flight sizing audit printed on import
 with open(os.devnull, 'w', encoding='utf-8') as fnull:
     with redirect_stdout(fnull):
-        import artemis_uav as uav
-        import mission_settings as ms
+        import jatayu_fc_uav as uav
+        import mission_settings_fc as ms
 
 # List of phase modules in exact chronological sequence
 PHASE_MODULE_NAMES = [

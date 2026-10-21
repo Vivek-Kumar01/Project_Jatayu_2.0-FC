@@ -1,151 +1,184 @@
 import math
 from ambiance import Atmosphere
-import artemis_uav as uav
-import mission_settings as ms
+import jatayu_fc_uav as uav
+import mission_settings_fc as ms
 import Phases.approach as ap
 
+# ------------------------------------------------------------------------------
+# 1. INITIAL CONDITIONS & FLARE GEOMETRY INITIALIZATION
+# ------------------------------------------------------------------------------
 m_initial = ap.m
 m = ap.m
 SoC = ap.SoC
+H2_mass = ap.H2_mass
 
-P_ICE_avionics = ms.power_avionics / uav.eta_alternator  # kW
+t_step = 0.1  # seconds
+rho0 = 1.2250  # ISA Sea Level density (kg/m^3)
 
-t_step = 0.1 # sec
+# Hotel avionics bus load
+P_avionics_bus = ms.power_avionics / uav.eta_DCDC_buck  # kW
 
 theta = ap.theta
-n_flare = 1.05 # load factor at flare
-V_flare = 1.23 * ap.V_stall_land # taking average velocity from 1.3 V_stall to 1.15 V_stall
-R_f = (V_flare)**2 / ((n_flare - 1) * 9.81)  # in m,  Radius of curvature of path, laod factor = 1.2
+n_flare = 1.05  # Load factor during flare rotation (5% incremental g)
+V_flare = 1.23 * ap.V_stall_land  # Average speed between approach (1.30 Vs) and touchdown (1.15 Vs)
+R_f = (V_flare ** 2) / ((n_flare - 1.0) * 9.81)  # Flare radius of curvature (m)
 
-h_flare = R_f * (1 - math.cos(theta)) # m
+h_flare = R_f * (1.0 - math.cos(theta))  # Height AGL where flare rotation begins (m)
 
 h = ap.h
 V = ap.V
-
 Cd0_land = ap.Cd0_land
 
-ROS = V * math.sin(theta) # m/s
+ROS = V * math.sin(theta)  # m/s glideslope sink rate
+eta_prop = 0.60            # Propeller efficiency during low-speed high-thrust approach
 
-eta_prop = 0.6
-
-s_hor_app = 0
-t_app = 0
+s_hor_app = 0.0
+t_app = 0.0
 Phase_Success = True
+t_baseline = ap.t_baseline + ap.t
 
-t_baseline = ap.t_baseline + ap.t  # Continuous cumulative time elapsed before final approach
+# ==============================================================================
+# PART 1: POWERED FINAL APPROACH GLIDESLOPE (Down to Flare Initiation Height)
+# ==============================================================================
+print(f"--> Initiating Phase 8A: Final Approach Glideslope to flare height ({h_flare:.2f} m AGL)...")
 
-while h > ms.altitude_takeoff + h_flare:
-    rho = Atmosphere(h).density[0]  # kg/m^3
-    P_ICE_full = uav.P_ICE_rated * ((1.132 * rho / Atmosphere(0).density[0]) - 0.132)  # kW
+while h > (ms.altitude_takeoff + h_flare) and Phase_Success:
+    atmos = Atmosphere(h)
+    rho = float(atmos.density[0]) if hasattr(atmos.density, '__len__') else float(atmos.density)
+    sigma = rho / rho0
 
-    Cl = (m * 9.81) / (0.5 * rho * V**2 * uav.S)
-    Cd = Cd0_land + uav.K * Cl**2
-    D = 0.5 * rho * V**2 * uav.S * Cd
-    T_req = D - (m*9.81*math.sin(theta))
+    # Aerodynamics on glideslope
+    Cl = (m * 9.81) / (0.5 * rho * (V ** 2) * uav.S)
+    Cd = Cd0_land + uav.K * (Cl ** 2)
+    D = 0.5 * rho * (V ** 2) * uav.S * Cd  # Newtons
 
-    P_avail = T_req * V
-    P_prop_shaft = P_avail / eta_prop
-    P_ICE_prop = P_prop_shaft / uav.eta_gearbox_ICE
+    # Thrust required balancing drag minus along-path gravity component
+    T_req = D - (m * 9.81 * math.sin(theta))
+    P_avail = max(0.0, T_req * V) / 1000.0   # kW (aerodynamic power)
+    P_shaft_prop = P_avail / eta_prop        # kW (mechanical shaft power)
 
-    percent_power = (P_ICE_prop + P_ICE_avionics * 1000) / (P_ICE_full*1000)
+    # Electrical motor demand from inverter
+    P_EM_elec = P_shaft_prop / (uav.eta_inverter * uav.eta_motor)  # kW
+    P_bus_load = P_EM_elec + P_avionics_bus                        # kW
 
-    if percent_power > 1:
+    # Fuel Cell available net capacity at current approach altitude
+    P_FC_gross_avail, P_FC_net_avail, P_BoP = uav.get_fc_available_power(h)
+
+    percent_power = P_bus_load / P_FC_net_avail
+    if percent_power > 1.0:
         print(f'''
-        MISSION FAILED: Not enough power available for overcoming drag in landing.
-        Percent Power: {percent_power:.2f}
-''')
-        Phase_Success = False
-        break
-
-    m_fuel = (((P_ICE_prop/1000) + P_ICE_avionics) * (uav.BSFC_ICE_low / 3600)) * t_step / 1000  # kg
-    m -= m_fuel
-    h -= ROS * t_step
-    s_hor_app += V * math.cos(theta) * t_step
-    t_app += t_step
-
-    # --- TELEMETRY LOGGING (Final Approach) ---
-    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
-    P_req = (D * V) / 1000.0  # kW
-    P_ICE_current = (P_ICE_prop / 1000.0) + P_ICE_avionics
-    cumulative_time = t_baseline + t_app
-    ms.log_telemetry(cumulative_time, 'Final_Approach', h, V, P_req, P_ICE_current, 0.0, fuel_remaining, SoC)
-
-    if m < uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel):
-        print('''
-        Error: Insufficient fuel remaining in approach.
-        MISSION FAILED.
+        MISSION FAILED: Final approach power exceeds available FC net capacity!
+        Percent Power: {percent_power * 100:.2f} %
         ''')
         Phase_Success = False
         break
 
+    # Battery floats on standby (0 kW assist)
+    P_bat_discharge = 0.0
 
-percent_idle_power = 6 # Percentage of total rated power at sea level
-P_ICE_Idle = (percent_idle_power/100) * uav.P_ICE_rated # kW
+    # Fuel cell gross demand & BoP parasitics
+    eta_net_bus = (1.0 - (P_BoP / P_FC_gross_avail)) * uav.eta_DCDC_boost
+    P_FC_gross_demand = P_bus_load / eta_net_bus
+    P_BoP_demand = P_FC_gross_demand * (P_BoP / P_FC_gross_avail)
 
-P_ICE_shaft = P_ICE_Idle - P_ICE_avionics # kW
-P_prop_shaft = P_ICE_shaft * uav.eta_gearbox_ICE
+    # Hydrogen reactant mass consumption
+    m_H2_consumed = ((P_FC_gross_demand * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_step
+    H2_mass -= m_H2_consumed
+    m -= m_H2_consumed
 
-eta_prop = 0 # Assuming not thrust, no lift coeff on blades of prop, only drag
-P_avail = P_prop_shaft * eta_prop
+    # Kinematics integration
+    h -= ROS * t_step
+    s_hor_app += V * math.cos(theta) * t_step
+    t_app += t_step
 
-if P_prop_shaft < 0:
-    print('''
-WARNING: Idling power percentage is too low, unable to power avionics. Increase the percentage.
-''')
+    # Telemetry logging (12 arguments)
+    P_req = (D * V) / 1000.0
+    cumulative_time = t_baseline + t_app
+    ms.log_telemetry(
+        cumulative_time, 'Final_Approach', h, V,
+        P_req, P_FC_gross_demand, P_bus_load, P_BoP_demand,
+        P_shaft_prop, P_bat_discharge, H2_mass, SoC
+    )
 
-s_hor_flare = R_f * math.sin(theta) # m
+    if H2_mass < ms.mass_reserve_H2:
+        print("Error: Emergency H2 fuel reserve breached during final approach!")
+        Phase_Success = False
+        break
 
-dist_flare = R_f * theta # m
-t_flare = dist_flare / V_flare
+# ==============================================================================
+# PART 2: FLARE ROTATION TO TOUCHDOWN (FLIGHT IDLE)
+# ==============================================================================
+print("--> Initiating Phase 8B: Circular Flare Arc to Touchdown (Flight Idle)...")
 
-m_fuel = (P_ICE_Idle * (uav.BSFC_ICE_low / 3600)) * t_flare / 1000  # kg
-m -= m_fuel
+# Commanded gross idle setpoint (6% of gross rated capacity)
+percent_idle_power = 6.0
+P_FC_gross_idle = (percent_idle_power / 100.0) * uav.P_FC_gross_rated  # 3.60 kW
 
-V = 1.15 * ap.V_stall_land
+# Kinematic flare arc parameters
+s_hor_flare = R_f * math.sin(theta)  # Ground distance traversed during flare (m)
+dist_flare = R_f * theta             # Arc length traversed (m)
+t_flare = dist_flare / V_flare       # Flare duration (s)
+
+# Sea-level / runway atmospheric conditions for flare evaluation
 h = ms.altitude_takeoff
+atmos_flare = Atmosphere(h)
+rho_flare = float(atmos_flare.density[0]) if hasattr(atmos_flare.density, '__len__') else float(atmos_flare.density)
+sigma_flare = rho_flare / rho0
+
+# BoP parasitics and net available bus power at idle
+f_comp_alt = uav.f_parasitic_compressor * (1.0 / sigma_flare) ** 0.60
+f_BoP_alt = f_comp_alt + uav.f_parasitic_coolant
+P_BoP_idle = P_FC_gross_idle * f_BoP_alt
+P_FC_net_idle = (P_FC_gross_idle - P_BoP_idle) * uav.eta_DCDC_boost
+
+# Avionics priority on bus; residual power turns prop at zero-thrust idle
+P_EM_elec_idle = max(0.0, P_FC_net_idle - P_avionics_bus)
+P_shaft_prop_idle = P_EM_elec_idle * (uav.eta_inverter * uav.eta_motor)
+P_bat_discharge = 0.0
+
+# Reactant consumption across flare arc duration
+m_H2_consumed_flare = ((P_FC_gross_idle * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_flare
+H2_mass -= m_H2_consumed_flare
+m -= m_H2_consumed_flare
+
+# Touchdown velocity (1.15 Vs)
+V = 1.15 * ap.V_stall_land
 
 # --- TELEMETRY LOGGING (Touchdown Instant at Runway Datum) ---
-fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
-D_flare = 0.5 * Atmosphere(h).density[0] * V**2 * uav.S * (Cd0_land + uav.K * ((m * 9.81)/(0.5 * Atmosphere(h).density[0] * V**2 * uav.S))**2)
-P_req_flare = (D_flare * V) / 1000.0
-cumulative_time = t_baseline + t_app + t_flare
-ms.log_telemetry(cumulative_time, 'Flare_Touchdown', h, V, P_req_flare, P_ICE_Idle, 0.0, fuel_remaining, SoC)
+Cl_flare = (m * 9.81) / (0.5 * rho_flare * (V ** 2) * uav.S)
+Cd_flare = Cd0_land + uav.K * (Cl_flare ** 2)
+D_flare = 0.5 * rho_flare * (V ** 2) * uav.S * Cd_flare
+P_req_flare = (D_flare * V) / 1000.0  # kW
 
-if m < uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel):
-    print('''
-    Error: Insufficient fuel remaining in flare.
-    MISSION FAILED.
-    ''')
+cumulative_time = t_baseline + t_app + t_flare
+ms.log_telemetry(
+    cumulative_time, 'Flare_Touchdown', h, V,
+    P_req_flare, P_FC_gross_idle, P_FC_net_idle, P_BoP_idle,
+    P_shaft_prop_idle, P_bat_discharge, H2_mass, SoC
+)
+
+if H2_mass < ms.mass_reserve_H2:
+    print("Error: Emergency H2 fuel reserve breached in flare!")
     Phase_Success = False
 
+# ------------------------------------------------------------------------------
+# 3. RESULTS REPORTING
+# ------------------------------------------------------------------------------
+m_H2_burned_total = m_initial - m
+status_str = "Successful" if Phase_Success else "Failed"
 
-if Phase_Success:
-        print(f'''
-    -------Final Approach & Flare Successful-------
-    Approach Distance: {s_hor_app:.2f} m, 
-    Approach Time: {t_app:.2f} sec,
-    Flare Height from runway: {h_flare:.2f} m,
-    Flare Distance: {s_hor_flare:.2f} m,
-    Flare Time: {t_flare:.2f} sec, 
-    Final Mass: {m:.2f} kg, 
-    Total Fuel Burned (Final Approach + Flare): {(m_initial - m)*1000:.2f} g,
-    Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg, 
-    Final SoC: {SoC*100:.2f} %
-    Final Velocity: {V:.2f} m/s,
-''')
-
-
-if not Phase_Success:
-        print(f'''
-    -------Final Approach & Flare Failed-------
-    Approach Distance: {s_hor_app:.2f} m, 
-    Approach Time: {t_app:.2f} sec,
-    Flare Height from runway: {h_flare:.2f} m,
-    Flare Distance: {s_hor_flare:.2f} m,
-    Flare Time: {t_flare:.2f} sec, 
-    Final Mass: {m:.2f} kg, 
-    Total Fuel Burned (Final Approach + Flare): {(m_initial - m)*1000:.2f} g,
-    Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg, 
-    Final SoC: {SoC*100:.2f} %
-    Final Velocity: {V:.2f} m/s,
+print(f'''
+    ------- Final Approach & Flare {status_str} -------
+    Approach Distance: {s_hor_app:.2f} m
+    Approach Time: {t_app:.2f} sec
+    Flare Height from runway: {h_flare:.2f} m
+    Flare Distance: {s_hor_flare:.2f} m
+    Flare Time: {t_flare:.2f} sec
+    Touchdown Airspeed: {V:.2f} m/s
+    Final Aircraft Mass: {m:.2f} kg
+    H2 reactant burned (Final Approach + Flare): {m_H2_burned_total * 1000.0:.2f} g
+    Remaining Usable H2 (excluding safety reserve): {H2_mass - ms.mass_reserve_H2:.2f} kg
+    Untouched Safety Reserve: {ms.mass_reserve_H2:.2f} kg
+    Final Buffer Battery SoC: {SoC * 100.0:.2f} %
+    Total Mission Duration: {cumulative_time / 3600.0:.2f} hours ({(cumulative_time / 60.0):.1f} min)
 ''')

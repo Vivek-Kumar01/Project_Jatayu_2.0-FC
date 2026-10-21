@@ -1,135 +1,128 @@
 import math
 from ambiance import Atmosphere
-import artemis_uav as uav
-import mission_settings as ms
+import jatayu_fc_uav as uav
+import mission_settings_fc as ms
 import Phases.loiter as lo
 
-
-descent_dist = 50 #km
-
-# Cruise In simulation setting
+# ------------------------------------------------------------------------------
+# 1. INITIAL CONDITIONS & SETTINGS FROM LOITER
+# ------------------------------------------------------------------------------
 t_step = 1.0  # seconds
-rho = Atmosphere(ms.cruise_altitude).density[0]  # kg/m^3
+rho = float(Atmosphere(ms.cruise_altitude).density[0]) if hasattr(Atmosphere(ms.cruise_altitude).density, '__len__') else float(Atmosphere(ms.cruise_altitude).density)
 
-P_ICE_full = uav.P_ICE_rated * ((1.132 * rho / Atmosphere(0).density[0]) - 0.132)  # kW
+descent_dist = 50.0  # km (distance allocated from base for descent phase)
 
-P_ICE_avionics = ms.power_avionics / uav.eta_alternator  # kW
-P_ICE_full = P_ICE_full - P_ICE_avionics  # kW
+# Total cruise-in transit required before initiating descent
+target_cruise_in_dist = ms.cruise_distance - descent_dist  # km (150 km - 50 km = 100 km)
 
-P_electric_full = (min(ms.power_battery_discharge, ms.power_inverter/uav.eta_inverter))*uav.eta_inverter*uav.eta_motor  # kW
-
-n_prop = 0.76  # Propeller efficiency
+m_initial = lo.m
+m = m_initial
+SoC = lo.SoC
+H2_mass = lo.H2_mass
 
 dist_covered = 0.0  # km
-m_inital = lo.m # kg
-m = m_inital  # kg
-SoC = lo.SoC
-time_cruise = 0.0  # seconds
+time_cruise = 0.0   # seconds
 
-percent_electric_power = 0.1 # Percentage of electric power
+eta_prop = 0.76  # Propeller efficiency at cruise
 
+# Minimum-drag cruise coefficients (maximum L/D cruise point)
 cl_cruise = math.sqrt(uav.Cd_0 / uav.K)
 cd_cruise = uav.Cd_0 + uav.K * cl_cruise**2
+
 Phase_Success = True
+t_baseline = lo.t_baseline + lo.endurance
 
-t_baseline = lo.t_baseline + lo.endurance  # Continuous cumulative time elapsed before cruise in
+# 28V Avionics auxiliary draw on the high-voltage bus
+P_avionics_bus = ms.power_avionics / uav.eta_DCDC_buck  # kW
 
-while dist_covered < ms.cruise_distance - descent_dist - lo.standoff_distance/1000:
-    vel_cruise = (2 * m * 9.81 / (rho * uav.S) * (uav.K / uav.Cd_0)**0.5)**0.5  # m/s
-    D_cruise = 0.5 * rho * vel_cruise**2 * uav.S * cd_cruise
-    P_prop_req = D_cruise * vel_cruise / 1000  # kW
-    P_shaft_prop = P_prop_req / n_prop  # kW
+# ------------------------------------------------------------------------------
+# 2. TIME-MARCHING CRUISE-IN SIMULATION (PURE FC)
+# ------------------------------------------------------------------------------
+while dist_covered < target_cruise_in_dist:
+    # Level cruise velocity at current mass
+    vel_cruise = math.sqrt((2.0 * m * 9.81) / (rho * uav.S) * math.sqrt(uav.K / uav.Cd_0))  # m/s
 
-    if P_shaft_prop > P_ICE_full*uav.eta_gearbox_ICE + P_electric_full:
+    # Aerodynamics & Propeller Shaft Power Required
+    D_cruise = 0.5 * rho * (vel_cruise**2) * uav.S * cd_cruise  # N
+    P_prop_req = (D_cruise * vel_cruise) / 1000.0                # kW (aerodynamic power)
+    P_shaft_prop = P_prop_req / eta_prop                         # kW (mechanical shaft power)
+
+    # Electrical motor input power required from inverter
+    P_EM_elec = P_shaft_prop / (uav.eta_inverter * uav.eta_motor)  # kW
+
+    # Total high-voltage bus load (Traction + Avionics)
+    P_bus_load = P_EM_elec + P_avionics_bus  # kW
+
+    # Check fuel cell capacity at 3000 m cruise altitude
+    P_FC_gross_avail, P_FC_net_avail, P_BoP = uav.get_fc_available_power(ms.cruise_altitude)
+
+    if P_bus_load > P_FC_net_avail:
         print('''
-        Error: Required propeller shaft power exceeds maximum available power.
+        Error: Required cruise-in bus power exceeds available net Fuel Cell capacity.
         MISSION FAILED.
         ''')
         Phase_Success = False
         break
 
-    if SoC > ms.SoC_min:
-        P_electric = percent_electric_power * P_electric_full  # kW
-        P_ICE = (P_shaft_prop - P_electric) / uav.eta_gearbox_ICE  # kW
+    # Battery floats on standby (0 kW assist, 0 kW charge)
+    P_bat_discharge = 0.0
 
-        if P_ICE > P_ICE_full:
-            print('''
-            Error: Required ICE power exceeds maximum available power.
-            MISSION FAILED.
-            ''')
-            Phase_Success = False
-            break
+    # Net-to-Gross transmission efficiency (accounts for BoP parasitics + Boost DC-DC)
+    eta_net_bus = (1.0 - (P_BoP / P_FC_gross_avail)) * uav.eta_DCDC_boost
+    P_FC_gross_demand = P_bus_load / eta_net_bus                  # kW
+    P_BoP_demand = P_FC_gross_demand * (P_BoP / P_FC_gross_avail) # kW
 
-        if P_ICE < 0:
-            print('''
-            Bad Input: Required ICE power is negative. Too much electric power is being used for loitering.
-            MISSION FAILED.
-            ''')
-            Phase_Success = False
-            break
+    # Hydrogen reactant mass consumption (LHV = 120 MJ/kg)
+    m_H2_consumed = ((P_FC_gross_demand * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_step  # kg
+    H2_mass -= m_H2_consumed
+    m -= m_H2_consumed
 
-        m_fuel = (P_ICE * (uav.BSFC_ICE_max / 3600)) * t_step / 1000  # kg
-        elec_energy_used = ((P_electric/(uav.eta_inverter*uav.eta_motor*uav.eta_discharge)) * t_step) / 3600  # kWh
+    # Distance and time integration
+    dist_covered += (vel_cruise * t_step) / 1000.0  # km
+    time_cruise += t_step                          # seconds
 
-        m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_max / 3600) * t_step / 1000)
-        SoC = SoC - (elec_energy_used / ms.battery_capacity)
-    else:
-        P_ICE = P_shaft_prop / uav.eta_gearbox_ICE  # kW
-        P_electric = 0.0  # kW
-
-        if P_ICE > P_ICE_full:
-            print('''
-            Error: Required ICE power exceeds maximum available power and battery SoC is below minimum.
-            MISSION FAILED.
-            ''')
-            Phase_Success = False
-            break
-
-        m_fuel = (P_ICE * (uav.BSFC_ICE_max / 3600)) * t_step / 1000  # kg
-        m = m - m_fuel - ((P_ICE_avionics * uav.BSFC_ICE_max / 3600) * t_step / 1000)
-
-
-    if m < uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel):
-        print('''
-        Error: Insufficient fuel remaining.
-        MISSION FAILED.
-        ''')
-        Phase_Success = False
-        break
-
-    dist_covered = dist_covered + (vel_cruise * t_step) / 1000  # km
-    time_cruise = time_cruise + t_step  # seconds
-
-    # --- TELEMETRY LOGGING (Cruise In) ---
-    fuel_remaining = m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel))
+    # Telemetry logging (12 arguments)
     cumulative_time = t_baseline + time_cruise
-    ms.log_telemetry(cumulative_time, 'Cruise_In', ms.cruise_altitude, vel_cruise, P_prop_req, P_ICE, P_electric, fuel_remaining, SoC)
+    ms.log_telemetry(
+        cumulative_time, 'Cruise_In', ms.cruise_altitude, vel_cruise,
+        P_prop_req, P_FC_gross_demand, P_bus_load, P_BoP_demand,
+        P_shaft_prop, P_bat_discharge, H2_mass, SoC
+    )
 
-m_fuel_burned = m_inital - m
+    if H2_mass < ms.mass_reserve_H2:
+        print('''
+        Error: Insufficient H2 fuel remaining during Cruise In (Reserve breached).
+        MISSION FAILED.
+        ''')
+        Phase_Success = False
+        break
 
-if Phase_Success:
-    print(f'''
-    -------Cruise In Successful-------
-    Distance covered: {dist_covered:.2f} km, 
-    Time: {time_cruise/60:.2f} min, 
-    Final Mass: {m:.2f} kg, 
-    Fuel Burned: {m_fuel_burned:.2f} kg,
-    Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg, 
-    Final SoC: {SoC*100:.2f} %
-    Final Velocity: {vel_cruise:.2f} m/s,
+    if SoC < ms.SoC_min:
+        print('''
+        Error: Battery SoC dropped below minimum limit.
+        MISSION FAILED.
+        ''')
+        Phase_Success = False
+        break
+
+# ------------------------------------------------------------------------------
+# 3. RESULTS REPORTING
+# ------------------------------------------------------------------------------
+m_H2_burned = m_initial - m
+status_str = "Successful" if Phase_Success else "Failed"
+
+print(f'''
+    ------- Cruise In {status_str} -------
+    Target distance to descent gate: {target_cruise_in_dist:.2f} km
+    Distance covered: {dist_covered:.2f} km
+    Transit Time: {time_cruise/60:.2f} min ({time_cruise/3600:.2f} hours)
+    Cruise Velocity: {vel_cruise:.2f} m/s
+    Propeller Shaft Power: {P_shaft_prop:.2f} kW
+    FC Net Bus Load: {P_bus_load:.2f} kW
+    FC Gross Load: {P_FC_gross_demand:.2f} kW
+    Total UAV Mass: {m:.2f} kg
+    H2 reactant burned: {m_H2_burned*1000:.2f} g ({m_H2_burned:.2f} kg)
+    Remaining usable H2 mass: {H2_mass - ms.mass_reserve_H2:.2f} kg
+    Remaining battery SoC: {SoC*100:.2f} %
+    Total Mission Time Elapsed So Far: {(t_baseline + time_cruise)/3600:.2f} hours
 ''')
-
-else:
-
-    print(f'''
-    -------Cruise In Failed-------
-    Distance covered: {dist_covered:.2f} km, 
-    Time: {time_cruise/60:.2f} min, 
-    Final Mass: {m:.2f} kg, 
-    Fuel Burned: {m_fuel_burned:.2f} kg, 
-    Fuel left (excluding reserve): {m - (uav.MTOW - ms.mass_fuel * (1 - ms.reserve_fuel)):.2f} kg,
-    Final SoC: {SoC*100:.2f} %
-    Final Velocity: {vel_cruise:.2f} m/s,
-''')
-
-
