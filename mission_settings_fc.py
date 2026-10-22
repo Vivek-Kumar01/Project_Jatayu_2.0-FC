@@ -1,5 +1,5 @@
 # ==============================================================================
-# PROJECT ARTEMIS 2.0 - FC: MISSION SETTINGS & SIZING AUDIT
+# PROJECT Jatayu 2.0 - FC: MISSION SETTINGS & SIZING AUDIT
 # ==============================================================================
 import math
 import jatayu_fc_uav as uav

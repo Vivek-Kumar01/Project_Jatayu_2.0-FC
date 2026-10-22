@@ -7,7 +7,7 @@ import mission_settings_fc as ms
 # 1. SEQUENTIAL PHASE EXECUTION
 # ------------------------------------------------------------------------------
 print("\n" + "=" * 80)
-print("       PROJECT ARTEMIS 2.0 - FC: FULL MISSION PROFILE SIMULATION")
+print("       PROJECT JATAYU 2.0 - FC: FULL MISSION PROFILE SIMULATION")
 print("=" * 80 + "\n")
 
 import Phases.takeoff as to
