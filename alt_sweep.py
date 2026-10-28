@@ -12,7 +12,7 @@ with open(os.devnull, 'w', encoding='utf-8') as fnull:
         import jatayu_fc_uav as uav
         import mission_settings_fc as ms
 
-# List of phase modules in exact chronological sequence[cite: 1]
+# List of phase modules in exact chronological sequence
 PHASE_MODULE_NAMES = [
     'Phases.takeoff',
     'Phases.pullup',
@@ -39,9 +39,7 @@ ALTITUDE_SWEEP_M = np.linspace(1000.0, 6000.0, 11)
 sweep_records = []
 
 print('=' * 96)
-print(
-    f"{'PROJECT JATAYU 2.0 - FC: CRUISE & LOITER ALTITUDE SWEEP':^96}"
-)
+print(f"{'CRUISE & LOITER ALTITUDE SWEEP (ALTITUDE vs. MISSION METRICS)':^96}")
 print('=' * 96)
 
 for idx, alt_m in enumerate(ALTITUDE_SWEEP_M):
@@ -167,7 +165,7 @@ for idx, alt_m in enumerate(ALTITUDE_SWEEP_M):
     print(
         f'[{idx+1:02d}/{len(ALTITUDE_SWEEP_M):02d}] Alt: {alt_m:5.0f} m | '
         f'TAS: {loiter_tas_ms:4.1f} m/s | BoP: {loiter_p_bop:4.1f} kW | '
-        f'Climb End SoC: {soc_post_climb_percent:4.1f}% | Loiter: {t_loiter_hr:5.2f} hr'
+        f'Climb End SoC: {soc_post_climb_percent:4.1f}% | Loiter: {t_loiter_hr:5.2f} hr | Total: {total_flight_time_hr:5.2f} hr'
     )
 
 # ------------------------------------------------------------------------------
@@ -178,34 +176,47 @@ csv_filename = 'fc_hardware_sweep_alt_results.csv'
 df_results.to_csv(csv_filename, index=False)
 print(f'\n--> Sweep data exported to {csv_filename}')
 
-fig, ax1 = plt.subplots(figsize=(10, 6.2), dpi=300)
+fig, ax1 = plt.subplots(figsize=(10.5, 6.2), dpi=300)
 
-# Colors matching project aesthetics[cite: 3]
-color_loiter = '#1F78B4'  # Steel Blue for Loiter
-color_bop = '#E31A1C'     # Crimson Red for BoP Parasitic Overhead
+color_loiter = '#1F78B4'    # Steel Blue for Loiter
+color_endurance = '#1B9E77' # Teal for Total Endurance
+color_bop = '#E31A1C'       # Crimson Red for BoP Parasitic Overhead
 
-# 1. Plot Left Axis: Sustained Loiter Endurance
+# 1. Left Axis - Sustained Loiter Endurance
 line1 = ax1.plot(
     df_results['Altitude_m'],
     df_results['Sustained_Loiter_hr'],
     marker='o',
     color=color_loiter,
     lw=2.2,
-    label='Sustained On-Station Loiter [Hours]',
+    label='Sustained On-Station Loiter [hr]',
 )
-ax1.set_xlabel('Loiter & Cruise Altitude [m MSL]', fontweight='bold', fontsize=11)
+
+# 2. Left Axis - Total Mission Endurance
+line2 = ax1.plot(
+    df_results['Altitude_m'],
+    df_results['Total_Endurance_hr'],
+    marker='D',
+    color=color_endurance,
+    lw=2.0,
+    linestyle='-.',
+    label='Total Mission Endurance [hr]',
+)
+
+ax1.set_xlabel('Loiter & Cruise Altitude [m MSL]', fontweight='bold', fontsize=11, labelpad=6)
 ax1.set_ylabel(
-    'Sustained On-Station Loiter [Hours]',
-    color=color_loiter,
+    'Mission Flight Duration [Hours]',
+    color='#222222',
     fontweight='bold',
     fontsize=11,
+    labelpad=8,
 )
-ax1.tick_params(axis='y', labelcolor=color_loiter)
-ax1.grid(True, linestyle=':', alpha=0.5)
+ax1.tick_params(axis='y', labelcolor='#222222')
+ax1.grid(True, linestyle=':', alpha=0.55)
 
-# 2. Plot Right Axis: Cathode Compressor & BoP Parasitic Draw
+# 3. Right Axis - Cathode Compressor & BoP Parasitic Draw
 ax2 = ax1.twinx()
-line2 = ax2.plot(
+line3 = ax2.plot(
     df_results['Altitude_m'],
     df_results['Loiter_P_BoP_kW'],
     marker='^',
@@ -219,13 +230,14 @@ ax2.set_ylabel(
     color=color_bop,
     fontweight='bold',
     fontsize=11,
+    labelpad=10,
 )
 ax2.tick_params(axis='y', labelcolor=color_bop)
 
 # ------------------------------------------------------------------------------
 # CONSTRAINT THRESHOLDS & FEASIBLE REGION SHADING
 # ------------------------------------------------------------------------------
-MIN_LOITER_REQ_HR = 5.0  # 5.0 hr minimum persistence threshold
+MIN_LOITER_REQ_HR = 5.0  # Tactical minimum persistence threshold
 
 line_t1 = ax1.axhline(
     MIN_LOITER_REQ_HR,
@@ -236,27 +248,33 @@ line_t1 = ax1.axhline(
 )
 
 # Vertical marker for baseline design point (3000 m)
-ax1.axvline(
+line_base = ax1.axvline(
     3000.0,
     color='#666666',
     linestyle='-.',
     lw=1.3,
-    alpha=0.8,
+    alpha=0.85,
     label='Design Baseline (3,000 m)',
 )
 
-y1_max = max(df_results['Sustained_Loiter_hr'].max() * 1.10, MIN_LOITER_REQ_HR + 3.0)
+# Left Y-Axis Scaling: Accommodate Total Endurance & Loiter cleanly
+y1_max = math.ceil(max(df_results['Total_Endurance_hr'].max(), df_results['Sustained_Loiter_hr'].max()) + 1.2)
 ax1.set_ylim(bottom=0.0, top=y1_max)
 ax1.axhspan(
     MIN_LOITER_REQ_HR,
     y1_max,
     color='#33A02C',
-    alpha=0.07,
+    alpha=0.06,
     label=f'Compliant Loiter Region (≥{MIN_LOITER_REQ_HR:.0f} hr)',
 )
 
+# Right Y-Axis Scaling: Add comfortable breathing room
+y2_min = math.floor(df_results['Loiter_P_BoP_kW'].min() - 0.5)
+y2_max = math.ceil(df_results['Loiter_P_BoP_kW'].max() + 0.5)
+ax2.set_ylim(bottom=max(0.0, y2_min), top=y2_max)
+
 # ------------------------------------------------------------------------------
-# SECONDARY X-AXIS: Altitude in Feet
+# SECONDARY TOP X-AXIS: Altitude in Feet
 # ------------------------------------------------------------------------------
 def m_to_ft(x):
     return x * 3.28084
@@ -265,25 +283,29 @@ def ft_to_m(x):
     return x / 3.28084
 
 ax_alt_ft = ax1.secondary_xaxis('top', functions=(m_to_ft, ft_to_m))
-ax_alt_ft.set_xlabel('Altitude [Feet MSL]', fontweight='bold', fontsize=11, labelpad=8)
-ax_alt_ft.tick_params(axis='x')
+ax_alt_ft.set_xlabel('Altitude [Feet MSL]', fontweight='bold', fontsize=11, labelpad=10)
+ax_alt_ft.tick_params(axis='x', pad=6)
 
 # ------------------------------------------------------------------------------
-# INVARIANT ANCHOR & COMBINED LEGEND
+# CLEAN LEGEND (Lower Left to prevent any overlap)
 # ------------------------------------------------------------------------------
 handles1, labels1 = ax1.get_legend_handles_labels()
 handles2, labels2 = ax2.get_legend_handles_labels()
+all_handles = handles1 + handles2
+all_labels = labels1 + labels2
+
 ax1.legend(
-    handles1 + handles2,
-    labels1 + labels2,
+    all_handles,
+    all_labels,
     loc='lower left',
+    bbox_to_anchor=(0.02, 0.06),
     framealpha=0.92,
-    fontsize=8.5,
+    fontsize=8.2,
     ncol=2,
 )
 
 plt.title(
-    'Project Jatayu 2.0 - FC: Flight Ceiling & Loiter Altitude Trade Study',
+    'Fuel Cell UAV: Flight Ceiling & Loiter Altitude Trade Study',
     fontweight='bold',
     fontsize=13,
     pad=38,
@@ -305,7 +327,7 @@ plt.figtext(
     ),
 )
 
-fig.tight_layout(rect=[0.0, 0.05, 1.0, 0.95])
+fig.tight_layout(rect=[0.02, 0.05, 0.96, 0.93])
 plot_filename = 'plot_fc_altitude_tradeoff.png'
 plt.savefig(plot_filename, dpi=300)
 plt.close(fig)

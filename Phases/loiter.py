@@ -23,7 +23,7 @@ H2_mass = co.H2_mass
 endurance = 0.0  # Total elapsed loiter time (s)
 
 # Keep sufficient reactant to execute cruise-in back to base
-fraction_keep = 1  # Fuel burn margin factor for return transit
+fraction_keep = 1.25  # Fuel burn margin factor for return transit
 min_H2_cruisein = ms.mass_reserve_H2 + (fraction_keep * co.m_H2_burned)
 
 Phase_Success = True

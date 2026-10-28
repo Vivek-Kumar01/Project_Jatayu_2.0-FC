@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-# Suppress the massive pre-flight sizing audit printed on initial import
+# Suppress sizing audit printed on initial import
 with open(os.devnull, 'w', encoding='utf-8') as fnull:
     with redirect_stdout(fnull):
         import jatayu_fc_uav as uav
@@ -34,19 +34,16 @@ E_BATT_FIXED = float(ms.battery_capacity)    # 8.0 kWh fixed baseline
 # ------------------------------------------------------------------------------
 # 1. DEFINE GROSS FUEL CELL RATING SWEEP RANGE (kW)
 # ------------------------------------------------------------------------------
-# Sweeping gross FC stack capacity from 40.0 kW to 80.0 kW (13 discrete evaluations)
 P_FC_SWEEP = np.linspace(40.0, 80.0, 13)
 sweep_records = []
 
 print('=' * 96)
-print(
-    f"{'PROJECT JATAYU 2.0 - FC: POWER HYBRIDIZATION SWEEP (DoH_P vs. MISSION METRICS)':^96}"
-)
+print(f"{'POWER DEGREE OF HYBRIDIZATION SWEEP (DoH_P vs. MISSION METRICS)':^96}")
 print('=' * 96)
 
 for idx, p_fc_gross in enumerate(P_FC_SWEEP):
     # --------------------------------------------------------------------------
-    # A. MUTATE FUEL CELL & AERODYNAMIC PARAMETERS IN UAV MODULE
+    # A. MUTATE FUEL CELL & AERODYNAMIC PARAMETERS
     # --------------------------------------------------------------------------
     uav.P_FC_gross_rated = float(p_fc_gross)
 
@@ -64,22 +61,19 @@ for idx, p_fc_gross in enumerate(P_FC_SWEEP):
     ) = uav.get_fc_available_power(0.0, uav.P_FC_gross_rated)
 
     # --------------------------------------------------------------------------
-    # B. MUTATE POWER-PACK MASS BREAKDOWN IN MISSION_SETTINGS
+    # B. MUTATE POWER-PACK MASS BREAKDOWN
     # --------------------------------------------------------------------------
-    # Fuel Cell System Hardware Mass
     ms.mass_FC_stack = uav.P_FC_gross_rated / uav.sp_power_FC_stack
     ms.mass_FC_BoP = uav.P_FC_gross_rated * uav.k_BoP_mass_factor
     ms.mass_FC_boost = uav.P_FC_gross_rated / uav.sp_power_DCDC_boost
     ms.mass_FC_system = ms.mass_FC_stack + ms.mass_FC_BoP + ms.mass_FC_boost
 
-    # Battery mass is fixed at 8.0 kWh baseline
     ms.battery_capacity = E_BATT_FIXED
     ms.mass_cells = (
         ms.battery_capacity * 1000.0
     ) / uav.specific_energy_battery_cell
     ms.mass_battery_pack = uav.k_bat_pack * ms.mass_cells
 
-    # Hydrogen storage mass budget from invariant power pack
     ms.mass_fixed_powertrain = (
         ms.mass_electric_hardware + ms.mass_FC_system + ms.mass_battery_pack
     )
@@ -92,15 +86,14 @@ for idx, p_fc_gross in enumerate(P_FC_SWEEP):
         )
         continue
 
-    # Gravimetric distribution of 700-bar Type-IV storage
     ms.mass_H2_total = ms.mass_H2_storage_total * uav.eta_tank_gravimetric
     ms.mass_tank_system = ms.mass_H2_storage_total - ms.mass_H2_total
 
-    # Reactant partitions
     ms.mass_reserve_H2 = ms.mass_H2_total * ms.reserve_fuel
     ms.mass_mission_H2 = ms.mass_H2_total - ms.mass_reserve_H2
     ms.m_zfw = uav.MTOW - ms.mass_H2_total
 
+    # Altitude-agnostic takeoff power split
     (
         P_FC_gross_TO,
         P_FC_net_TO,
@@ -110,6 +103,7 @@ for idx, p_fc_gross in enumerate(P_FC_SWEEP):
     P_bat_surge_req = max(0.0, P_EM_TAKEOFF - P_FC_net_TO)
     doh_p = P_bat_surge_req / P_EM_TAKEOFF
     c_rate_takeoff_surge = P_bat_surge_req / ms.battery_capacity
+
     # --------------------------------------------------------------------------
     # C. RESET TELEMETRY BUFFER
     # --------------------------------------------------------------------------
@@ -164,10 +158,8 @@ for idx, p_fc_gross in enumerate(P_FC_SWEEP):
     # E. EXTRACT MISSION METRICS
     # --------------------------------------------------------------------------
     df_sim = pd.DataFrame(ms.telemetry)
-
     total_flight_time_hr = df_sim['time_s'].iloc[-1] / 3600.0
 
-    # Loiter persistence
     df_loiter = df_sim[df_sim['phase'] == 'Loiter']
     t_loiter_hr = (
         (df_loiter['time_s'].iloc[-1] - df_loiter['time_s'].iloc[0]) / 3600.0
@@ -175,7 +167,6 @@ for idx, p_fc_gross in enumerate(P_FC_SWEEP):
         else 0.0
     )
 
-    # Takeoff ground roll extraction
     df_to = df_sim[df_sim['phase'] == 'Takeoff']
     s_ground_roll = (
         df_to['velocity_ms'].iloc[-1] * df_to['time_s'].iloc[-1] * 0.5
@@ -183,7 +174,6 @@ for idx, p_fc_gross in enumerate(P_FC_SWEEP):
         else 0.0
     )
 
-    # Battery State of Charge at end of climb
     soc_post_climb_percent = (
         df_loiter['battery_soc'].iloc[0] * 100.0
         if not df_loiter.empty
@@ -219,38 +209,52 @@ csv_filename = 'fc_hardware_sweep_dohp_results.csv'
 df_results.to_csv(csv_filename, index=False)
 print(f'\n--> Sweep data exported to {csv_filename}')
 
-fig, ax1 = plt.subplots(figsize=(10, 6.2), dpi=300)
+fig, ax1 = plt.subplots(figsize=(10.5, 6.2), dpi=300)
 
-# Colors matching deck aesthetic
-color_loiter = '#1F78B4'  # Steel Blue for Loiter
-color_crate = '#D95F02'   # Warm Amber / Red for Battery C-rate stress
+color_loiter = '#1F78B4'    # Steel Blue for Loiter
+color_endurance = '#1B9E77' # Teal for Total Endurance
+color_crate = '#D95F02'     # Warm Amber / Firebrick for C-rate
 
-# 1. Plot Left Axis: Sustained Loiter (Hours)
+# 1. Left Axis - Sustained Loiter
 line1 = ax1.plot(
     df_results['P_FC_gross_kW'],
     df_results['Sustained_Loiter_hr'],
     marker='o',
     color=color_loiter,
     lw=2.2,
-    label='Sustained On-Station Loiter [Hours]',
+    label='Sustained On-Station Loiter [hr]',
 )
+
+# 2. Left Axis - Total Endurance
+line2 = ax1.plot(
+    df_results['P_FC_gross_kW'],
+    df_results['Total_Endurance_hr'],
+    marker='D',
+    color=color_endurance,
+    lw=2.0,
+    linestyle='-.',
+    label='Total Mission Endurance [hr]',
+)
+
 ax1.set_xlabel(
     'Gross Fuel Cell Stack Rating ($P_{FC,gross}$) [kW]',
     fontweight='bold',
     fontsize=11,
+    labelpad=6,
 )
 ax1.set_ylabel(
-    'Sustained On-Station Loiter [Hours]',
-    color=color_loiter,
+    'Mission Flight Duration [Hours]',
+    color='#222222',
     fontweight='bold',
     fontsize=11,
+    labelpad=8,
 )
-ax1.tick_params(axis='y', labelcolor=color_loiter)
-ax1.grid(True, linestyle=':', alpha=0.5)
+ax1.tick_params(axis='y', labelcolor='#222222')
+ax1.grid(True, linestyle=':', alpha=0.55)
 
-# 2. Plot Right Axis: Peak Battery Takeoff C-Rate
+# 3. Right Axis - Peak Battery Takeoff C-Rate
 ax2 = ax1.twinx()
-line2 = ax2.plot(
+line3 = ax2.plot(
     df_results['P_FC_gross_kW'],
     df_results['C_rate_surge'],
     marker='^',
@@ -264,16 +268,16 @@ ax2.set_ylabel(
     color=color_crate,
     fontweight='bold',
     fontsize=11,
+    labelpad=8,
 )
 ax2.tick_params(axis='y', labelcolor=color_crate)
 
 # ------------------------------------------------------------------------------
-# CONSTRAINT THRESHOLDS & FEASIBLE REGION SHADING
+# CONSTRAINTS & FEASIBLE REGIONS
 # ------------------------------------------------------------------------------
 MIN_LOITER_REQ_HR = 5.0      # Tactical loiter requirement (5.0 hr)
 MAX_CRATE_LIMIT = 10.0       # Max safe cell burst limit (10C)
 
-# Threshold lines
 line_t1 = ax1.axhline(
     MIN_LOITER_REQ_HR,
     color='#E31A1C',
@@ -289,18 +293,19 @@ line_t2 = ax2.axhline(
     label=f'Limit: Max Cell C-Rate ({MAX_CRATE_LIMIT:.0f}C)',
 )
 
-# Shading Feasible Regions
-y1_max = max(df_results['Sustained_Loiter_hr'].max() * 1.10, MIN_LOITER_REQ_HR + 3.0)
+# Left Y-Axis Scaling
+y1_max = math.ceil(max(df_results['Total_Endurance_hr'].max(), df_results['Sustained_Loiter_hr'].max()) + 1.2)
 ax1.set_ylim(bottom=0.0, top=y1_max)
 ax1.axhspan(
     MIN_LOITER_REQ_HR,
     y1_max,
     color='#33A02C',
-    alpha=0.07,
+    alpha=0.06,
     label=f'Compliant Loiter Region (≥{MIN_LOITER_REQ_HR:.0f} hr)',
 )
 
-y2_max = max(df_results['C_rate_surge'].max() * 1.18, MAX_CRATE_LIMIT + 2.0)
+# Right Y-Axis Scaling: Give comfortable margin above 10C limit
+y2_max = max(df_results['C_rate_surge'].max() * 1.15, MAX_CRATE_LIMIT + 2.0)
 ax2.set_ylim(bottom=0.0, top=y2_max)
 ax2.axhspan(
     0.0,
@@ -311,7 +316,7 @@ ax2.axhspan(
 )
 
 # ------------------------------------------------------------------------------
-# SECONDARY X-AXIS: Power Degree of Hybridization (DoH_P %)
+# SECONDARY TOP X-AXIS: DoH_P (%)
 # ------------------------------------------------------------------------------
 dohp_vals = df_results['DoH_P_percent'].values
 pfc_vals = df_results['P_FC_gross_kW'].values
@@ -330,33 +335,36 @@ ax_dohp.set_xlabel(
     'Power Degree of Hybridization ($DoH_P$) [%]',
     fontweight='bold',
     fontsize=11,
-    labelpad=8,
+    labelpad=10,
 )
-ax_dohp.tick_params(axis='x')
+# Padding ticks away to prevent collision with right axis top tick
+ax_dohp.tick_params(axis='x', pad=6)
 
 # ------------------------------------------------------------------------------
-# INVARIANT ANCHOR & COMBINED LEGEND
+# CLEAN MULTI-ROW LEGEND
 # ------------------------------------------------------------------------------
 handles1, labels1 = ax1.get_legend_handles_labels()
 handles2, labels2 = ax2.get_legend_handles_labels()
+all_handles = handles1 + handles2
+all_labels = labels1 + labels2
+
 ax1.legend(
-    handles1 + handles2,
-    labels1 + labels2,
+    all_handles,
+    all_labels,
     loc='upper center',
-    bbox_to_anchor=(0.5, 0.95),
+    bbox_to_anchor=(0.5, 0.96),
     framealpha=0.92,
-    fontsize=8.5,
-    ncol=2,
+    fontsize=8.2,
+    ncol=3,
 )
 
 plt.title(
-    'Project Jatayu 2.0 - FC: Power Hybridization Envelope ($DoH_P$)',
+    'Fuel Cell UAV: Power Hybridization Envelope ($DoH_P$)',
     fontweight='bold',
     fontsize=13,
     pad=38,
 )
 
-# Fully parametric caption pulling from frozen constants
 plt.figtext(
     0.5,
     0.015,
@@ -374,7 +382,9 @@ plt.figtext(
     ),
 )
 
-fig.tight_layout(rect=[0.0, 0.05, 1.0, 0.95])
+# Extra right margin to guarantee zero overlap with secondary tick labels
+fig.tight_layout(rect=[0.02, 0.05, 0.96, 0.93])
+
 plot_filename = 'plot_fc_dohp_tradeoff_pareto.png'
 plt.savefig(plot_filename, dpi=300)
 plt.close(fig)
