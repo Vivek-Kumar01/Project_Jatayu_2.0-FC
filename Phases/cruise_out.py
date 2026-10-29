@@ -1,5 +1,6 @@
 import math
 from ambiance import Atmosphere
+import numpy as np
 import jatayu_fc_uav as uav
 import mission_settings_fc as ms
 import Phases.cruise_climb as cc
@@ -67,16 +68,16 @@ while dist_covered < target_cruise_distance:
     P_bat_discharge = 0.0
     DoH = 0.0
 
-    # 2. Net-to-Gross transmission efficiency at current altitude
-    # Accounts for BoP parasitics and Boost DC-DC converter losses
+    # Net-to-Gross transmission efficiency at current altitude
     eta_net_bus = (1.0 - (P_BoP / P_FC_gross_avail)) * uav.eta_DCDC_boost
     P_FC_gross_demand = P_bus_load / eta_net_bus  # kW
 
-    # Solve Fuel Cell gross output demanded for current net bus load
-    P_FC_gross_demand = P_bus_load / eta_net_bus  # kW
+    # Dynamic throttle fraction and empirical stack efficiency
+    xi_fc = float(np.clip(P_FC_gross_demand / P_FC_gross_avail, 0.05, 1.0)) if P_FC_gross_avail > 0.0 else 1.0
+    eta_fc = uav.get_fc_efficiency(P_FC_gross_demand, P_FC_gross_avail)
 
-    # Hydrogen reactant mass consumption
-    m_H2_consumed = ((P_FC_gross_demand * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_step  # kg
+    # Dynamic hydrogen reactant mass consumption (LHV = 120 MJ/kg)
+    m_H2_consumed = ((P_FC_gross_demand * 1000.0) / (eta_fc * uav.LHV_H2)) * t_step  # kg
     H2_mass -= m_H2_consumed
     m -= m_H2_consumed
 
@@ -84,9 +85,7 @@ while dist_covered < target_cruise_distance:
     dist_covered += (vel_cruise * t_step) / 1000.0  # km
     time_cruise += t_step                          # seconds
 
-
-# --- TELEMETRY LOGGING (Cruise Out) ---
-    fuel_remaining = H2_mass - ms.mass_reserve_H2
+    # --- TELEMETRY LOGGING (Cruise Out) ---
     cumulative_time = t_baseline + time_cruise
     P_BoP_demand = P_FC_gross_demand * (P_BoP / P_FC_gross_avail)
     ms.log_telemetry(
@@ -101,8 +100,11 @@ while dist_covered < target_cruise_distance:
         P_shaft_prop,         # 9. p_em
         P_bat_discharge,      # 10. p_bat
         H2_mass,              # 11. h2_mass
-        SoC                   # 12. soc
+        SoC,                  # 12. soc
+        xi_fc,                # 13. xi_fc
+        eta_fc                # 14. eta_fc
     )
+
     if H2_mass < ms.mass_reserve_H2:
         print('''
         Error: Insufficient H2 fuel remaining for mission (Reserve breached).
@@ -132,8 +134,8 @@ print(f'''
     Transit Time: {time_cruise/60:.2f} min ({time_cruise/3600:.2f} hours)
     Cruise Velocity: {vel_cruise:.2f} m/s
     Propeller Shaft Power: {P_shaft_prop:.2f} kW
+    FC Gross Output: {P_FC_gross_demand:.2f} kW | Load Ratio (xi): {xi_fc:.2f} | Stack Eff: {eta_fc*100:.2f} %
     FC Net Bus Load: {P_bus_load:.2f} kW
-    FC Gross Output: {P_FC_gross_demand:.2f} kW
     Total UAV Mass: {m:.2f} kg
     H2 reactant burned: {m_H2_burned*1000:.2f} g ({m_H2_burned:.2f} kg)
     Remaining usable H2 mass: {H2_mass - ms.mass_reserve_H2:.2f} kg

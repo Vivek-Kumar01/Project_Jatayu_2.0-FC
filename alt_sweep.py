@@ -1,6 +1,7 @@
 import importlib
 import math
 import os
+import sys
 from contextlib import redirect_stdout
 import matplotlib.pyplot as plt
 import numpy as np
@@ -94,10 +95,19 @@ for idx, alt_m in enumerate(ALTITUDE_SWEEP_M):
         'P_bat_kW': [],
         'H2_mass_kg': [],
         'battery_soc': [],
+        'xi_FC': [],
+        'eta_FC': [],
     }
 
     # --------------------------------------------------------------------------
-    # C. EXECUTE PHASES SILENTLY & VALIDATE
+    # C. PURGE CACHED MODULES TO PREVENT INTER-PHASE STATE POLLUTION
+    # --------------------------------------------------------------------------
+    for mod_name in PHASE_MODULE_NAMES:
+        if mod_name in sys.modules:
+            del sys.modules[mod_name]
+
+    # --------------------------------------------------------------------------
+    # D. EXECUTE PHASES SILENTLY & VALIDATE
     # --------------------------------------------------------------------------
     sim_failed = False
     failed_phase_name = None
@@ -107,8 +117,6 @@ for idx, alt_m in enumerate(ALTITUDE_SWEEP_M):
             for mod_name in PHASE_MODULE_NAMES:
                 try:
                     mod = importlib.import_module(mod_name)
-                    importlib.reload(mod)
-
                     phase_ok = getattr(mod, 'Phase_Success', True)
                     if not phase_ok:
                         sim_failed = True
@@ -128,7 +136,7 @@ for idx, alt_m in enumerate(ALTITUDE_SWEEP_M):
         continue
 
     # --------------------------------------------------------------------------
-    # D. EXTRACT METRICS FROM TELEMETRY
+    # E. EXTRACT METRICS FROM TELEMETRY
     # --------------------------------------------------------------------------
     df_sim = pd.DataFrame(ms.telemetry)
 
@@ -144,6 +152,8 @@ for idx, alt_m in enumerate(ALTITUDE_SWEEP_M):
     loiter_tas_ms = df_loiter['velocity_ms'].mean() if not df_loiter.empty else 0.0
     loiter_p_fc_net = df_loiter['P_FC_net_kW'].mean() if not df_loiter.empty else 0.0
     loiter_p_bop = df_loiter['P_BoP_kW'].mean() if not df_loiter.empty else 0.0
+    loiter_eta_fc = df_loiter['eta_FC'].mean() * 100.0 if not df_loiter.empty else 0.0
+    loiter_xi_fc = df_loiter['xi_FC'].mean() * 100.0 if not df_loiter.empty else 0.0
 
     soc_post_climb_percent = (
         df_loiter['battery_soc'].iloc[0] * 100.0
@@ -159,12 +169,15 @@ for idx, alt_m in enumerate(ALTITUDE_SWEEP_M):
         'Loiter_TAS_ms': loiter_tas_ms,
         'Loiter_P_FC_net_kW': loiter_p_fc_net,
         'Loiter_P_BoP_kW': loiter_p_bop,
+        'Loiter_Eta_FC_percent': loiter_eta_fc,
+        'Loiter_Xi_FC_percent': loiter_xi_fc,
         'Post_Climb_SoC_percent': soc_post_climb_percent,
     })
 
     print(
         f'[{idx+1:02d}/{len(ALTITUDE_SWEEP_M):02d}] Alt: {alt_m:5.0f} m | '
         f'TAS: {loiter_tas_ms:4.1f} m/s | BoP: {loiter_p_bop:4.1f} kW | '
+        f'Stack Eff: {loiter_eta_fc:4.1f}% (ξ={loiter_xi_fc:3.0f}%) | '
         f'Climb End SoC: {soc_post_climb_percent:4.1f}% | Loiter: {t_loiter_hr:5.2f} hr | Total: {total_flight_time_hr:5.2f} hr'
     )
 
@@ -175,6 +188,10 @@ df_results = pd.DataFrame(sweep_records)
 csv_filename = 'fc_hardware_sweep_alt_results.csv'
 df_results.to_csv(csv_filename, index=False)
 print(f'\n--> Sweep data exported to {csv_filename}')
+
+if df_results.empty:
+    print('Error: No successful sweep points to plot.')
+    sys.exit(1)
 
 fig, ax1 = plt.subplots(figsize=(10.5, 6.2), dpi=300)
 

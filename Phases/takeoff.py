@@ -1,5 +1,6 @@
 import math
 from ambiance import Atmosphere
+import numpy as np
 import jatayu_fc_uav as uav
 import mission_settings_fc as ms
 
@@ -22,15 +23,17 @@ P_FC_gross_avail, P_FC_net_avail, P_BoP = uav.get_fc_available_power(h)
 
 # Full FC continuous net power committed to the bus during takeoff roll
 P_FC_net = P_FC_net_avail  # Usable electrical kW delivered to 700V bus
+P_FC_gross = P_FC_gross_avail
+
+# Dynamic load fraction and empirical thermodynamic efficiency
+xi_fc = float(np.clip(P_FC_gross / P_FC_gross_avail, 0.05, 1.0)) if P_FC_gross_avail > 0 else 1.0
+eta_fc = uav.get_fc_efficiency(P_FC_gross, P_FC_gross_avail)
 
 # High-voltage bus power allocation:
-# Traction motor drive demand:
 P_EM_elec_max = ms.power_inverter  # kW electrical capacity of inverter
-# Motor shaft mechanical power limit:
 P_shaft_max = P_EM_elec_max * uav.eta_inverter * uav.eta_motor  # ~96.7 kW mechanical
 
 # Power split on the 700V high-voltage DC bus:
-# The FC net injects power into the bus; the buffer battery supplies the takeoff surge deficit
 P_bus_demand = P_EM_elec_max + P_avionics_bus
 P_bat_discharge = P_bus_demand - P_FC_net  # kW pulled from battery
 
@@ -46,14 +49,13 @@ else:
 P_shaft_prop = P_EM_elec * uav.eta_inverter * uav.eta_motor  # kW
 P_EM_mech = P_shaft_prop
 
-# Degree of Hybridization (Electrochemical vs. Battery Electrostatic storage)
-# DoH = Battery share of total traction electrical draw
+# Degree of Hybridization (Battery share of total bus power demand)
 DoH = P_bat_discharge / P_bus_demand
 
 # ------------------------------------------------------------------------------
-# 3. THRUST COMPUTATION (Identical Aerodynamic Formulation)
+# 3. THRUST COMPUTATION
 # ------------------------------------------------------------------------------
-Merit_Factor = 0.7  # Ideal power req to real power given
+Merit_Factor = 0.7
 Static_thrust = (Merit_Factor ** (2 / 3)) * (
     2 * rho * (math.pi / 4 * uav.D_prop**2) * (P_shaft_prop * 1000.0) ** 2
 ) ** (1 / 3)
@@ -87,14 +89,12 @@ while V < V_LO:
     F_net = T - D - (W - L) * ms.rolling_friction_coefficient
     a_net = F_net / m
 
-    # Hydrogen mass consumption (LHV = 120 MJ/kg, eta_FC = 0.55)
-    # m_dot_H2 = P_gross_W / (eta_FC * LHV_J)
-    m_H2_consumed = ((P_FC_gross_avail * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_step  # kg
+    # Dynamic Hydrogen mass consumption (LHV = 120 MJ/kg)
+    m_H2_consumed = ((P_FC_gross * 1000.0) / (eta_fc * uav.LHV_H2)) * t_step  # kg
     H2_mass = H2_mass - m_H2_consumed
     m = m - m_H2_consumed  # Aircraft mass update
 
     # Buffer battery energy depletion
-    # Internal battery discharge efficiency accounted for
     elec_energy_used = ((P_bat_discharge / uav.eta_discharge) * t_step) / 3600.0  # kWh
     SoC = SoC - (elec_energy_used / ms.battery_capacity)
 
@@ -103,7 +103,10 @@ while V < V_LO:
 
     # --- TELEMETRY LOGGING (Step) ---
     P_req = (D * V) / 1000.0  # kW
-    ms.log_telemetry(t, 'Takeoff', h, V, P_req, P_FC_gross_avail, P_FC_net, P_BoP, P_EM_mech, P_bat_discharge, H2_mass, SoC)
+    ms.log_telemetry(
+        t, 'Takeoff', h, V, P_req, P_FC_gross, P_FC_net, P_BoP,
+        P_EM_mech, P_bat_discharge, H2_mass, SoC, xi_fc, eta_fc
+    )
 
     if s_roll > ms.max_permissible_sroll:
         print("Takeoff failed: maximum permissible ground roll exceeded.")
@@ -123,7 +126,7 @@ while V < V_LO:
 s_roll = s_roll + N * V_LO
 
 # Hydrogen and battery consumption during rotation interval (N seconds)
-m_H2_consumed_rot = ((P_FC_gross_avail * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * N
+m_H2_consumed_rot = ((P_FC_gross * 1000.0) / (eta_fc * uav.LHV_H2)) * N
 H2_mass = H2_mass - m_H2_consumed_rot
 m = m - m_H2_consumed_rot
 
@@ -132,7 +135,10 @@ SoC = SoC - (elec_energy_used_rot / ms.battery_capacity)
 
 # --- TELEMETRY LOGGING (Post-Rotation) ---
 P_req_rot = (0.5 * rho * V_LO**2 * uav.S * ms.CD_takeoff * V_LO) / 1000.0  # kW
-ms.log_telemetry(t + N, 'Takeoff_Rotation', h, V_LO, P_req_rot, P_FC_gross_avail, P_FC_net, P_BoP, P_EM_mech, P_bat_discharge, H2_mass, SoC)
+ms.log_telemetry(
+    t + N, 'Takeoff_Rotation', h, V_LO, P_req_rot, P_FC_gross, P_FC_net, P_BoP,
+    P_EM_mech, P_bat_discharge, H2_mass, SoC, xi_fc, eta_fc
+)
 
 Phase_Success = s_roll < ms.max_permissible_sroll
 
@@ -141,6 +147,7 @@ if not Phase_Success:
 else:
     print(f'''
     ------- Takeoff Successful -------
+    P_FC_gross: {P_FC_gross:.2f} kW | Load Ratio (xi): {xi_fc:.2f} | Stack Eff: {eta_fc*100:.2f} %
     P_FC_net: {P_FC_net:.2f} kW, P_Battery_surge: {P_bat_discharge:.2f} kW, P_shaft: {P_shaft_prop:.2f} kW
     Degree of Hybridization (Battery share): {DoH*100:.1f} %
     Total ground roll distance: {s_roll:.2f} m

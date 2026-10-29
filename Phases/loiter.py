@@ -1,5 +1,6 @@
 import math
 from ambiance import Atmosphere
+import numpy as np
 import jatayu_fc_uav as uav
 import mission_settings_fc as ms
 import Phases.cruise_out as co
@@ -71,8 +72,12 @@ while H2_mass > min_H2_cruisein:
     P_FC_gross_demand = P_bus_load / eta_net_bus                          # kW
     P_BoP_demand = P_FC_gross_demand * (P_BoP / P_FC_gross_avail)         # kW
 
-    # Hydrogen reactant mass consumption (LHV = 120 MJ/kg)
-    m_H2_consumed = ((P_FC_gross_demand * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_step  # kg
+    # Dynamic throttle fraction and empirical stack efficiency
+    xi_fc = float(np.clip(P_FC_gross_demand / P_FC_gross_avail, 0.05, 1.0)) if P_FC_gross_avail > 0.0 else 1.0
+    eta_fc = uav.get_fc_efficiency(P_FC_gross_demand, P_FC_gross_avail)
+
+    # Dynamic hydrogen reactant mass consumption (LHV = 120 MJ/kg)
+    m_H2_consumed = ((P_FC_gross_demand * 1000.0) / (eta_fc * uav.LHV_H2)) * t_step  # kg
     H2_mass -= m_H2_consumed
     m -= m_H2_consumed
 
@@ -84,12 +89,13 @@ while H2_mass > min_H2_cruisein:
         Phase_Success = False
         break
 
-    # Telemetry logging (12 arguments)
+    # Telemetry logging (14 arguments)
     cumulative_time = t_baseline + endurance
     ms.log_telemetry(
         cumulative_time, 'Loiter', ms.loiter_altitude, vel_loiter,
         P_prop_req, P_FC_gross_demand, P_bus_load, P_BoP_demand,
-        P_shaft_prop, P_bat_discharge, H2_mass, SoC
+        P_shaft_prop, P_bat_discharge, H2_mass, SoC,
+        xi_fc, eta_fc
     )
 
 # ------------------------------------------------------------------------------
@@ -104,8 +110,8 @@ Status: {status_str}
 Total On-Station Loiter Endurance: {endurance / 3600.0:.2f} hours ({(endurance / 60.0):.1f} mins)
 Loiter Airspeed: {vel_loiter:.2f} m/s
 Propeller Shaft Power: {P_shaft_prop:.2f} kW
+FC Gross Load: {P_FC_gross_demand:.2f} kW | Load Ratio (xi): {xi_fc:.2f} | Stack Eff: {eta_fc * 100.0:.2f} %
 FC Net Bus Load: {P_bus_load:.2f} kW
-FC Gross Load: {P_FC_gross_demand:.2f} kW
 Final Aircraft Mass: {m:.2f} kg
 H2 reactant burned in loiter: {m_H2_burned_loiter:.2f} kg ({m_H2_burned_loiter * 1000.0:.1f} g)
 Buffer Battery SoC: {SoC * 100.0:.2f} % (Floated)

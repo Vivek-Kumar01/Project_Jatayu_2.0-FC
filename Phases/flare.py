@@ -1,5 +1,6 @@
 import math
 from ambiance import Atmosphere
+import numpy as np
 import jatayu_fc_uav as uav
 import mission_settings_fc as ms
 import Phases.approach as ap
@@ -36,6 +37,9 @@ s_hor_app = 0.0
 t_app = 0.0
 Phase_Success = True
 t_baseline = ap.t_baseline + ap.t
+
+xi_fc_app = 0.0
+eta_fc_app = 0.50
 
 # ==============================================================================
 # PART 1: POWERED FINAL APPROACH GLIDESLOPE (Down to Flare Initiation Height)
@@ -81,8 +85,12 @@ while h > (ms.altitude_takeoff + h_flare) and Phase_Success:
     P_FC_gross_demand = P_bus_load / eta_net_bus
     P_BoP_demand = P_FC_gross_demand * (P_BoP / P_FC_gross_avail)
 
-    # Hydrogen reactant mass consumption
-    m_H2_consumed = ((P_FC_gross_demand * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_step
+    # Dynamic throttle fraction and empirical stack efficiency
+    xi_fc_app = float(np.clip(P_FC_gross_demand / P_FC_gross_avail, 0.05, 1.0)) if P_FC_gross_avail > 0.0 else 1.0
+    eta_fc_app = uav.get_fc_efficiency(P_FC_gross_demand, P_FC_gross_avail)
+
+    # Dynamic hydrogen reactant mass consumption
+    m_H2_consumed = ((P_FC_gross_demand * 1000.0) / (eta_fc_app * uav.LHV_H2)) * t_step
     H2_mass -= m_H2_consumed
     m -= m_H2_consumed
 
@@ -91,13 +99,14 @@ while h > (ms.altitude_takeoff + h_flare) and Phase_Success:
     s_hor_app += V * math.cos(theta) * t_step
     t_app += t_step
 
-    # Telemetry logging (12 arguments)
+    # Telemetry logging (14 arguments)
     P_req = (D * V) / 1000.0
     cumulative_time = t_baseline + t_app
     ms.log_telemetry(
         cumulative_time, 'Final_Approach', h, V,
         P_req, P_FC_gross_demand, P_bus_load, P_BoP_demand,
-        P_shaft_prop, P_bat_discharge, H2_mass, SoC
+        P_shaft_prop, P_bat_discharge, H2_mass, SoC,
+        xi_fc_app, eta_fc_app
     )
 
     if H2_mass < ms.mass_reserve_H2:
@@ -125,6 +134,13 @@ atmos_flare = Atmosphere(h)
 rho_flare = float(atmos_flare.density[0]) if hasattr(atmos_flare.density, '__len__') else float(atmos_flare.density)
 sigma_flare = rho_flare / rho0
 
+# Dynamic fuel cell available capacity at runway elevation
+P_FC_gross_avail_flare, _, _ = uav.get_fc_available_power(h)
+
+# Dynamic throttle fraction and empirical stack efficiency during flare idle
+xi_fc_flare = float(np.clip(P_FC_gross_idle / P_FC_gross_avail_flare, 0.05, 1.0)) if P_FC_gross_avail_flare > 0.0 else 0.05
+eta_fc_flare = uav.get_fc_efficiency(P_FC_gross_idle, P_FC_gross_avail_flare)
+
 # BoP parasitics and net available bus power at idle
 f_comp_alt = uav.f_parasitic_compressor * (1.0 / sigma_flare) ** 0.60
 f_BoP_alt = f_comp_alt + uav.f_parasitic_coolant
@@ -136,8 +152,8 @@ P_EM_elec_idle = max(0.0, P_FC_net_idle - P_avionics_bus)
 P_shaft_prop_idle = P_EM_elec_idle * (uav.eta_inverter * uav.eta_motor)
 P_bat_discharge = 0.0
 
-# Reactant consumption across flare arc duration
-m_H2_consumed_flare = ((P_FC_gross_idle * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_flare
+# Dynamic reactant consumption across flare arc duration
+m_H2_consumed_flare = ((P_FC_gross_idle * 1000.0) / (eta_fc_flare * uav.LHV_H2)) * t_flare
 H2_mass -= m_H2_consumed_flare
 m -= m_H2_consumed_flare
 
@@ -154,7 +170,8 @@ cumulative_time = t_baseline + t_app + t_flare
 ms.log_telemetry(
     cumulative_time, 'Flare_Touchdown', h, V,
     P_req_flare, P_FC_gross_idle, P_FC_net_idle, P_BoP_idle,
-    P_shaft_prop_idle, P_bat_discharge, H2_mass, SoC
+    P_shaft_prop_idle, P_bat_discharge, H2_mass, SoC,
+    xi_fc_flare, eta_fc_flare
 )
 
 if H2_mass < ms.mass_reserve_H2:
@@ -176,6 +193,7 @@ print(f'''
     Flare Time: {t_flare:.2f} sec
     Touchdown Airspeed: {V:.2f} m/s
     Final Aircraft Mass: {m:.2f} kg
+    Flare Idle Load Ratio (xi): {xi_fc_flare:.2f} | Flare Stack Eff: {eta_fc_flare * 100.0:.2f} %
     H2 reactant burned (Final Approach + Flare): {m_H2_burned_total * 1000.0:.2f} g
     Remaining Usable H2 (excluding safety reserve): {H2_mass - ms.mass_reserve_H2:.2f} kg
     Untouched Safety Reserve: {ms.mass_reserve_H2:.2f} kg

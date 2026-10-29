@@ -1,5 +1,6 @@
 import math
 from ambiance import Atmosphere
+import numpy as np
 import jatayu_fc_uav as uav
 import mission_settings_fc as ms
 import Phases.climb as cl
@@ -54,13 +55,19 @@ while h < h_target:
 
     # 1. Dynamic altitude-derated fuel cell capacity
     P_FC_gross_avail, P_FC_net_avail, P_BoP = uav.get_fc_available_power(h)
+    P_FC_gross = P_FC_gross_avail
+    P_FC_net = P_FC_net_avail
+
+    # Dynamic load fraction and empirical efficiency
+    xi_fc = float(np.clip(P_FC_gross / P_FC_gross_avail, 0.05, 1.0)) if P_FC_gross_avail > 0.0 else 1.0
+    eta_fc = uav.get_fc_efficiency(P_FC_gross, P_FC_gross_avail)
 
     # 2. Maximum combined electrical power delivered to motor inverter
-    P_bus_available = P_FC_net_avail + P_bat_max - P_avionics_bus
+    P_bus_available = P_FC_net + P_bat_max - P_avionics_bus
     P_EM_elec = min(P_bus_available, ms.power_inverter)
 
     # Actual continuous battery discharge load
-    P_bat_discharge = (P_EM_elec + P_avionics_bus) - P_FC_net_avail
+    P_bat_discharge = (P_EM_elec + P_avionics_bus) - P_FC_net
 
     # Degree of Hybridization (Battery share of traction bus draw)
     DoH = P_bat_discharge / (P_EM_elec + P_avionics_bus)
@@ -91,8 +98,8 @@ while h < h_target:
     s_hor += V * math.cos(theta) * t_step
     t += t_step
 
-    # 5. Hydrogen mass consumption (LHV = 120 MJ/kg, eta_FC = 0.55)
-    m_H2_consumed = ((P_FC_gross_avail * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_step  # kg
+    # 5. Dynamic Hydrogen mass consumption (LHV = 120 MJ/kg)
+    m_H2_consumed = ((P_FC_gross * 1000.0) / (eta_fc * uav.LHV_H2)) * t_step  # kg
     H2_mass -= m_H2_consumed
     m -= m_H2_consumed
 
@@ -101,12 +108,11 @@ while h < h_target:
     SoC -= (elec_energy_used / ms.battery_capacity)
 
     # --- TELEMETRY LOGGING (Cruise Climb) ---
-    fuel_remaining = H2_mass - ms.mass_reserve_H2
     cumulative_time = t_baseline + t
     ms.log_telemetry(
         cumulative_time, 'Cruise_Climb', h, V, P_req / 1000.0,
-        P_FC_gross_avail, P_FC_net_avail, P_BoP, P_prop_shaft, P_bat_discharge,
-        H2_mass, SoC
+        P_FC_gross, P_FC_net, P_BoP, P_prop_shaft, P_bat_discharge,
+        H2_mass, SoC, xi_fc, eta_fc
     )
 
     if SoC < ms.SoC_min:
@@ -131,7 +137,8 @@ while h < h_target:
 status_str = "Successful" if Phase_Success else "Failed"
 print(f'''
     ------- Cruise Climb (to {h_target:.0f}m) {status_str} -------
-    EOP P_FC_net: {P_FC_net_avail:.2f} kW, P_Battery_cont: {P_bat_discharge:.2f} kW
+    EOP P_FC_gross: {P_FC_gross:.2f} kW | Load Ratio (xi): {xi_fc:.2f} | Stack Eff: {eta_fc*100:.2f} %
+    EOP P_FC_net: {P_FC_net:.2f} kW, P_Battery_cont: {P_bat_discharge:.2f} kW
     EOP Shaft Power: {P_prop_shaft:.2f} kW, Thrust Power: {P_avail:.2f} kW
     DoH (Battery fraction): {DoH*100:.1f} %
     Rate of Climb (Final): {R_C:.2f} m/s

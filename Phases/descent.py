@@ -1,5 +1,6 @@
 import math
 from ambiance import Atmosphere
+import numpy as np
 import jatayu_fc_uav as uav
 import mission_settings_fc as ms
 import Phases.cruise_in as ci
@@ -44,6 +45,9 @@ while h > h_target:
     rho = float(atmos.density[0]) if hasattr(atmos.density, '__len__') else float(atmos.density)
     sigma = rho / rho0
 
+    # Dynamic altitude-derated fuel cell capacity & BoP parasitics at current altitude
+    P_FC_gross_avail, _, _ = uav.get_fc_available_power(h)
+
     # Explicit altitude-scaled BoP parasitics at current commanded gross idle
     f_comp_alt = uav.f_parasitic_compressor * (1.0 / sigma) ** 0.60
     f_BoP_alt = f_comp_alt + uav.f_parasitic_coolant
@@ -51,7 +55,11 @@ while h > h_target:
     P_BoP_idle = P_FC_gross_idle * f_BoP_alt
     P_FC_net_idle = (P_FC_gross_idle - P_BoP_idle) * uav.eta_DCDC_boost
 
-    #Balance of bus power: Avionics gets served, leftover spins prop at idle
+    # Dynamic throttle fraction and empirical stack efficiency at idle
+    xi_fc = float(np.clip(P_FC_gross_idle / P_FC_gross_avail, 0.05, 1.0)) if P_FC_gross_avail > 0.0 else 0.05
+    eta_fc = uav.get_fc_efficiency(P_FC_gross_idle, P_FC_gross_avail)
+
+    # Balance of bus power: Avionics gets served, leftover spins prop at idle
     P_EM_elec = max(0.0, P_FC_net_idle - P_avionics_bus)
     P_shaft_prop = P_EM_elec * (uav.eta_inverter * uav.eta_motor)
 
@@ -70,18 +78,18 @@ while h > h_target:
     s_hor += V * math.cos(theta) * t_step
     t += t_step
 
-    # Hydrogen reactant mass consumption during idle (kg)
-    m_H2_consumed = ((P_FC_gross_idle * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_step
+    # Dynamic hydrogen reactant mass consumption during idle (kg)
+    m_H2_consumed = ((P_FC_gross_idle * 1000.0) / (eta_fc * uav.LHV_H2)) * t_step
     H2_mass -= m_H2_consumed
     m -= m_H2_consumed
 
-    # Telemetry logging (12 arguments)
-    fuel_remaining = H2_mass - ms.mass_reserve_H2
+    # Telemetry logging (14 arguments)
     cumulative_time = t_baseline + t
     ms.log_telemetry(
         cumulative_time, 'Descent', h, V,
         P_req / 1000.0, P_FC_gross_idle, P_FC_net_idle, P_BoP_idle,
-        P_shaft_prop, P_bat_discharge, H2_mass, SoC
+        P_shaft_prop, P_bat_discharge, H2_mass, SoC,
+        xi_fc, eta_fc
     )
 
     if H2_mass < ms.mass_reserve_H2:
@@ -102,6 +110,7 @@ print(f'''
     ------- Descent {status_str} -------
     Horizontal Distance covered: {s_hor/1000.0:.2f} km
     Descent Time: {t/60.0:.2f} min
+    FC Gross Idle: {P_FC_gross_idle:.2f} kW | Load Ratio (xi): {xi_fc:.2f} | Stack Eff: {eta_fc*100.0:.2f} %
     Final Altitude: {h:.2f} m
     Final Mass: {m:.2f} kg
     H2 reactant burned: {m_H2_burned*1000.0:.2f} g ({m_H2_burned:.2f} kg)

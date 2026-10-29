@@ -1,6 +1,7 @@
 import importlib
 import math
 import os
+import sys
 from contextlib import redirect_stdout
 import matplotlib.pyplot as plt
 import numpy as np
@@ -97,10 +98,19 @@ for idx, e_batt in enumerate(E_BATT_SWEEP):
         'P_bat_kW': [],
         'H2_mass_kg': [],
         'battery_soc': [],
+        'xi_FC': [],
+        'eta_FC': [],
     }
 
     # --------------------------------------------------------------------------
-    # C. EXECUTE PHASES SILENTLY & VALIDATE
+    # C. PURGE CACHED MODULES TO PREVENT INTER-PHASE STATE POLLUTION
+    # --------------------------------------------------------------------------
+    for mod_name in PHASE_MODULE_NAMES:
+        if mod_name in sys.modules:
+            del sys.modules[mod_name]
+
+    # --------------------------------------------------------------------------
+    # D. EXECUTE PHASES SILENTLY & VALIDATE
     # --------------------------------------------------------------------------
     sim_failed = False
     failed_phase_name = None
@@ -110,8 +120,6 @@ for idx, e_batt in enumerate(E_BATT_SWEEP):
             for mod_name in PHASE_MODULE_NAMES:
                 try:
                     mod = importlib.import_module(mod_name)
-                    importlib.reload(mod)
-
                     phase_ok = getattr(mod, 'Phase_Success', True)
                     if not phase_ok:
                         sim_failed = True
@@ -131,7 +139,7 @@ for idx, e_batt in enumerate(E_BATT_SWEEP):
         continue
 
     # --------------------------------------------------------------------------
-    # D. EXTRACT METRICS
+    # E. EXTRACT METRICS
     # --------------------------------------------------------------------------
     df_sim = pd.DataFrame(ms.telemetry)
     total_flight_time_hr = df_sim['time_s'].iloc[-1] / 3600.0
@@ -178,6 +186,10 @@ df_results = pd.DataFrame(sweep_records)
 csv_filename = 'fc_hardware_sweep_dohe_results.csv'
 df_results.to_csv(csv_filename, index=False)
 print(f'\n--> Sweep data exported to {csv_filename}')
+
+if df_results.empty:
+    print('Error: No successful sweep points to plot.')
+    sys.exit(1)
 
 fig, ax1 = plt.subplots(figsize=(10.5, 6.2), dpi=300)
 
@@ -257,18 +269,23 @@ ax2.axhspan(MIN_SOC_REQ_PERCENT, 100.0, color='#6A3D9A', alpha=0.06, label=f'Pro
 # ------------------------------------------------------------------------------
 # SECONDARY TOP X-AXIS: DoH_E (%)
 # ------------------------------------------------------------------------------
-doh_vals = df_results['DoH_E_percent'].values
-ebatt_vals = df_results['E_batt_kWh'].values
+if len(df_results) >= 2:
+    doh_vals = df_results['DoH_E_percent'].values
+    ebatt_vals = df_results['E_batt_kWh'].values
 
-def ebatt_to_dohe(x):
-    return np.interp(x, ebatt_vals, doh_vals)
+    sort_idx = np.argsort(ebatt_vals)
+    ebatt_sorted = ebatt_vals[sort_idx]
+    doh_sorted = doh_vals[sort_idx]
 
-def dohe_to_ebatt(x):
-    return np.interp(x, doh_vals, ebatt_vals)
+    def ebatt_to_dohe(x):
+        return np.interp(x, ebatt_sorted, doh_sorted)
 
-ax_doh = ax1.secondary_xaxis('top', functions=(ebatt_to_dohe, dohe_to_ebatt))
-ax_doh.set_xlabel('Energy Degree of Hybridization ($DoH_E$) [%]', fontweight='bold', fontsize=11, labelpad=10)
-ax_doh.tick_params(axis='x', pad=4)
+    def dohe_to_ebatt(x):
+        return np.interp(x, doh_sorted, ebatt_sorted)
+
+    ax_doh = ax1.secondary_xaxis('top', functions=(ebatt_to_dohe, dohe_to_ebatt))
+    ax_doh.set_xlabel('Energy Degree of Hybridization ($DoH_E$) [%]', fontweight='bold', fontsize=11, labelpad=10)
+    ax_doh.tick_params(axis='x', pad=4)
 
 # ------------------------------------------------------------------------------
 # CLEAN MULTI-ROW LEGEND
@@ -288,7 +305,6 @@ ax1.legend(
     ncol=3,
 )
 
-# Generic professional title
 plt.title('Fuel Cell UAV: Energy Hybridization Envelope ($DoH_E$)', fontweight='bold', fontsize=13, pad=38)
 
 plt.figtext(
@@ -302,7 +318,6 @@ plt.figtext(
     bbox=dict(boxstyle='square,pad=0.4', facecolor='#F0F0F0', edgecolor='#CCCCCC', lw=0.8),
 )
 
-# Extra margin right and top to completely avoid overlapping labels
 fig.tight_layout(rect=[0.02, 0.05, 0.98, 0.93])
 
 plot_filename = 'plot_fc_dohe_tradeoff_pareto.png'

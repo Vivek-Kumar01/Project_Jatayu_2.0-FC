@@ -1,6 +1,7 @@
 import importlib
 import math
 import os
+import sys
 from contextlib import redirect_stdout
 import matplotlib.pyplot as plt
 import numpy as np
@@ -93,7 +94,7 @@ for idx, p_fc_gross in enumerate(P_FC_SWEEP):
     ms.mass_mission_H2 = ms.mass_H2_total - ms.mass_reserve_H2
     ms.m_zfw = uav.MTOW - ms.mass_H2_total
 
-    # Altitude-agnostic takeoff power split
+    # Takeoff power split at runway elevation
     (
         P_FC_gross_TO,
         P_FC_net_TO,
@@ -120,10 +121,19 @@ for idx, p_fc_gross in enumerate(P_FC_SWEEP):
         'P_bat_kW': [],
         'H2_mass_kg': [],
         'battery_soc': [],
+        'xi_FC': [],
+        'eta_FC': [],
     }
 
     # --------------------------------------------------------------------------
-    # D. EXECUTE PHASES SILENTLY & VALIDATE INTEGRATION
+    # D. PURGE CACHED MODULES TO PREVENT INTER-PHASE STATE POLLUTION
+    # --------------------------------------------------------------------------
+    for mod_name in PHASE_MODULE_NAMES:
+        if mod_name in sys.modules:
+            del sys.modules[mod_name]
+
+    # --------------------------------------------------------------------------
+    # E. EXECUTE PHASES SILENTLY & VALIDATE INTEGRATION
     # --------------------------------------------------------------------------
     sim_failed = False
     failed_phase_name = None
@@ -133,8 +143,6 @@ for idx, p_fc_gross in enumerate(P_FC_SWEEP):
             for mod_name in PHASE_MODULE_NAMES:
                 try:
                     mod = importlib.import_module(mod_name)
-                    importlib.reload(mod)
-
                     phase_ok = getattr(mod, 'Phase_Success', True)
                     if not phase_ok:
                         sim_failed = True
@@ -155,7 +163,7 @@ for idx, p_fc_gross in enumerate(P_FC_SWEEP):
         continue
 
     # --------------------------------------------------------------------------
-    # E. EXTRACT MISSION METRICS
+    # F. EXTRACT MISSION METRICS
     # --------------------------------------------------------------------------
     df_sim = pd.DataFrame(ms.telemetry)
     total_flight_time_hr = df_sim['time_s'].iloc[-1] / 3600.0
@@ -164,13 +172,6 @@ for idx, p_fc_gross in enumerate(P_FC_SWEEP):
     t_loiter_hr = (
         (df_loiter['time_s'].iloc[-1] - df_loiter['time_s'].iloc[0]) / 3600.0
         if not df_loiter.empty
-        else 0.0
-    )
-
-    df_to = df_sim[df_sim['phase'] == 'Takeoff']
-    s_ground_roll = (
-        df_to['velocity_ms'].iloc[-1] * df_to['time_s'].iloc[-1] * 0.5
-        if not df_to.empty
         else 0.0
     )
 
@@ -208,6 +209,10 @@ df_results = pd.DataFrame(sweep_records)
 csv_filename = 'fc_hardware_sweep_dohp_results.csv'
 df_results.to_csv(csv_filename, index=False)
 print(f'\n--> Sweep data exported to {csv_filename}')
+
+if df_results.empty:
+    print('Error: No successful sweep points to plot.')
+    sys.exit(1)
 
 fig, ax1 = plt.subplots(figsize=(10.5, 6.2), dpi=300)
 
@@ -304,7 +309,7 @@ ax1.axhspan(
     label=f'Compliant Loiter Region (≥{MIN_LOITER_REQ_HR:.0f} hr)',
 )
 
-# Right Y-Axis Scaling: Give comfortable margin above 10C limit
+# Right Y-Axis Scaling
 y2_max = max(df_results['C_rate_surge'].max() * 1.15, MAX_CRATE_LIMIT + 2.0)
 ax2.set_ylim(bottom=0.0, top=y2_max)
 ax2.axhspan(
@@ -316,29 +321,36 @@ ax2.axhspan(
 )
 
 # ------------------------------------------------------------------------------
-# SECONDARY TOP X-AXIS: DoH_P (%)
+# SECONDARY TOP X-AXIS: DoH_P (%) (Ensuring Monotonic Sorting for np.interp)
 # ------------------------------------------------------------------------------
-dohp_vals = df_results['DoH_P_percent'].values
-pfc_vals = df_results['P_FC_gross_kW'].values
+if len(df_results) >= 2:
+    pfc_vals = df_results['P_FC_gross_kW'].values
+    dohp_vals = df_results['DoH_P_percent'].values
 
+    # Sort forward for pfc -> dohp
+    sort_pfc = np.argsort(pfc_vals)
+    pfc_sorted = pfc_vals[sort_pfc]
+    dohp_from_pfc = dohp_vals[sort_pfc]
 
-def pfc_to_dohp(x):
-    return np.interp(x, pfc_vals, dohp_vals)
+    # Sort forward for dohp -> pfc (dohp decreases as pfc increases)
+    sort_dohp = np.argsort(dohp_vals)
+    dohp_sorted = dohp_vals[sort_dohp]
+    pfc_from_dohp = pfc_vals[sort_dohp]
 
+    def pfc_to_dohp(x):
+        return np.interp(x, pfc_sorted, dohp_from_pfc)
 
-def dohp_to_pfc(x):
-    return np.interp(x, dohp_vals, pfc_vals)
+    def dohp_to_pfc(x):
+        return np.interp(x, dohp_sorted, pfc_from_dohp)
 
-
-ax_dohp = ax1.secondary_xaxis('top', functions=(pfc_to_dohp, dohp_to_pfc))
-ax_dohp.set_xlabel(
-    'Power Degree of Hybridization ($DoH_P$) [%]',
-    fontweight='bold',
-    fontsize=11,
-    labelpad=10,
-)
-# Padding ticks away to prevent collision with right axis top tick
-ax_dohp.tick_params(axis='x', pad=6)
+    ax_dohp = ax1.secondary_xaxis('top', functions=(pfc_to_dohp, dohp_to_pfc))
+    ax_dohp.set_xlabel(
+        'Power Degree of Hybridization ($DoH_P$) [%]',
+        fontweight='bold',
+        fontsize=11,
+        labelpad=10,
+    )
+    ax_dohp.tick_params(axis='x', pad=6)
 
 # ------------------------------------------------------------------------------
 # CLEAN MULTI-ROW LEGEND
@@ -382,7 +394,6 @@ plt.figtext(
     ),
 )
 
-# Extra right margin to guarantee zero overlap with secondary tick labels
 fig.tight_layout(rect=[0.02, 0.05, 0.96, 0.93])
 
 plot_filename = 'plot_fc_dohp_tradeoff_pareto.png'

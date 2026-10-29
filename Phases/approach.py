@@ -1,5 +1,6 @@
 import math
 from ambiance import Atmosphere
+import numpy as np
 import jatayu_fc_uav as uav
 import mission_settings_fc as ms
 import Phases.descent as ds
@@ -8,7 +9,7 @@ import Phases.descent as ds
 # 1. INITIAL CONDITIONS & AERODYNAMIC DIRTY CONFIGURATION
 # ------------------------------------------------------------------------------
 m_initial = ds.m
-m = ds.m
+m = m_initial
 SoC = ds.SoC
 H2_mass = ds.H2_mass
 
@@ -53,6 +54,13 @@ while V > V_target:
     rho = float(atmos.density[0]) if hasattr(atmos.density, '__len__') else float(atmos.density)
     sigma = rho / rho0
 
+    # Dynamic fuel cell available capacity at current altitude
+    P_FC_gross_avail, _, _ = uav.get_fc_available_power(h)
+
+    # Dynamic throttle fraction and empirical stack efficiency at idle
+    xi_fc = float(np.clip(P_FC_gross_idle / P_FC_gross_avail, 0.05, 1.0)) if P_FC_gross_avail > 0.0 else 0.05
+    eta_fc = uav.get_fc_efficiency(P_FC_gross_idle, P_FC_gross_avail)
+
     # Aerodynamic drag in dirty landing configuration (level flight, theta = 0)
     Cl = (m * 9.81) / (0.5 * rho * (V**2) * uav.S)
     Cd = Cd0_land + uav.K * (Cl**2)
@@ -76,17 +84,18 @@ while V > V_target:
     P_shaft_prop = P_EM_elec * (uav.eta_inverter * uav.eta_motor)
     P_bat_discharge = 0.0
 
-    # H2 reactant consumption at idle
-    m_H2_consumed = ((P_FC_gross_idle * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_step
+    # Dynamic H2 reactant consumption at idle
+    m_H2_consumed = ((P_FC_gross_idle * 1000.0) / (eta_fc * uav.LHV_H2)) * t_step
     H2_mass -= m_H2_consumed
     m -= m_H2_consumed
 
-    # Telemetry logging (12 arguments)
+    # Telemetry logging (14 arguments)
     cumulative_time = t_baseline + t
     ms.log_telemetry(
         cumulative_time, 'Approach_Decel', h, V,
         P_req, P_FC_gross_idle, P_FC_net_idle, P_BoP_idle,
-        P_shaft_prop, P_bat_discharge, H2_mass, SoC
+        P_shaft_prop, P_bat_discharge, H2_mass, SoC,
+        xi_fc, eta_fc
     )
 
     if H2_mass < ms.mass_reserve_H2:
@@ -104,6 +113,8 @@ ROS = V * math.sin(theta)  # m/s rate of descent
 eta_prop = 0.60            # Propeller efficiency during low-speed high-thrust approach
 
 percent_power_final = 0.0
+xi_fc_final = 0.0
+eta_fc_final = 0.50
 
 while h > h_target and Phase_Success:
     atmos = Atmosphere(h)
@@ -146,8 +157,14 @@ while h > h_target and Phase_Success:
     P_FC_gross_demand = P_bus_load / eta_net_bus
     P_BoP_demand = P_FC_gross_demand * (P_BoP / P_FC_gross_avail)
 
-    # Reactant consumption
-    m_H2_consumed = ((P_FC_gross_demand * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_step
+    # Dynamic throttle fraction and empirical stack efficiency
+    xi_fc = float(np.clip(P_FC_gross_demand / P_FC_gross_avail, 0.05, 1.0)) if P_FC_gross_avail > 0.0 else 1.0
+    eta_fc = uav.get_fc_efficiency(P_FC_gross_demand, P_FC_gross_avail)
+    xi_fc_final = xi_fc
+    eta_fc_final = eta_fc
+
+    # Dynamic reactant consumption
+    m_H2_consumed = ((P_FC_gross_demand * 1000.0) / (eta_fc * uav.LHV_H2)) * t_step
     H2_mass -= m_H2_consumed
     m -= m_H2_consumed
 
@@ -156,13 +173,14 @@ while h > h_target and Phase_Success:
     s_hor += V * math.cos(theta) * t_step
     t += t_step
 
-    # Telemetry logging (12 arguments)
+    # Telemetry logging (14 arguments)
     P_req = (D * V) / 1000.0
     cumulative_time = t_baseline + t
     ms.log_telemetry(
         cumulative_time, 'Approach_Glide', h, V,
         P_req, P_FC_gross_demand, P_bus_load, P_BoP_demand,
-        P_shaft_prop, P_bat_discharge, H2_mass, SoC
+        P_shaft_prop, P_bat_discharge, H2_mass, SoC,
+        xi_fc, eta_fc
     )
 
     if H2_mass < ms.mass_reserve_H2:
@@ -187,5 +205,6 @@ print(f'''
     Remaining battery SoC: {SoC*100.0:.2f} %
     Final Approach Velocity: {V:.2f} m/s
     Percent FC Capacity Utilized: {percent_power_final*100.0:.2f} %
+    Final Load Ratio (xi): {xi_fc_final:.2f} | Final Stack Eff: {eta_fc_final*100.0:.2f} %
     Total Mission Time Elapsed So Far: {(t_baseline + t)/3600.0:.2f} hours
 ''')

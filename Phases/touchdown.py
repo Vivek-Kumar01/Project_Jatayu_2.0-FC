@@ -1,5 +1,6 @@
 import math
 from ambiance import Atmosphere
+import numpy as np
 import jatayu_fc_uav as uav
 import mission_settings_fc as ms
 import Phases.flare as fl
@@ -25,6 +26,13 @@ t_step = 0.1  # seconds
 percent_idle_power = 6.0
 P_FC_gross_idle = (percent_idle_power / 100.0) * uav.P_FC_gross_rated  # 3.60 kW
 
+# Dynamic fuel cell available capacity at runway elevation
+P_FC_gross_avail, _, _ = uav.get_fc_available_power(h)
+
+# Dynamic load fraction and empirical stack efficiency at idle
+xi_fc = float(np.clip(P_FC_gross_idle / P_FC_gross_avail, 0.05, 1.0)) if P_FC_gross_avail > 0.0 else 0.05
+eta_fc = uav.get_fc_efficiency(P_FC_gross_idle, P_FC_gross_avail)
+
 # Sea-level / runway BoP parasitics and usable net bus power
 f_comp_alt = uav.f_parasitic_compressor * (1.0 / sigma) ** 0.60
 f_BoP_alt = f_comp_alt + uav.f_parasitic_coolant
@@ -40,7 +48,7 @@ P_shaft_prop_idle = P_EM_elec_idle * (uav.eta_inverter * uav.eta_motor)
 P_bat_discharge = 0.0
 
 Cd_0_land = fl.Cd0_land
-delta_Cl_flaps = 0.40  # or uav.delta_Cl_flaps
+delta_Cl_flaps = 0.40
 Cl = uav.Cl_ground + delta_Cl_flaps
 Cd = Cd_0_land + ms.K_grd * (Cl ** 2)
 mu_r = 0.40  # Braking coefficient of rolling friction
@@ -49,8 +57,8 @@ mu_r = 0.40  # Braking coefficient of rolling friction
 N_freeroll = 1.0  # seconds
 s_land_roll = N_freeroll * V
 
-# H2 consumed during free roll
-m_H2_freeroll = ((P_FC_gross_idle * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * N_freeroll
+# H2 consumed during free roll (dynamic eta_fc)
+m_H2_freeroll = ((P_FC_gross_idle * 1000.0) / (eta_fc * uav.LHV_H2)) * N_freeroll
 H2_mass -= m_H2_freeroll
 m -= m_H2_freeroll
 
@@ -80,18 +88,18 @@ while V > 0.0 and Phase_Success:
         s_land_roll += 0.5 * (V ** 2) / abs(a_net)
         t += dt_stop
 
-        m_H2_stop = ((P_FC_gross_idle * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * dt_stop
+        m_H2_stop = ((P_FC_gross_idle * 1000.0) / (eta_fc * uav.LHV_H2)) * dt_stop
         H2_mass -= m_H2_stop
         m -= m_H2_stop
         V = 0.0
 
         # --- TELEMETRY LOGGING (Full Stop Datum) ---
-        fuel_remaining = H2_mass - ms.mass_reserve_H2
         cumulative_time = t_baseline + t
         ms.log_telemetry(
             cumulative_time, 'Mission_Complete', h, 0.0,
             0.0, P_FC_gross_idle, P_FC_net_idle, P_BoP_idle,
-            0.0, 0.0, H2_mass, SoC
+            0.0, 0.0, H2_mass, SoC,
+            xi_fc, eta_fc
         )
         break
 
@@ -100,17 +108,18 @@ while V > 0.0 and Phase_Success:
     t += t_step
 
     # Regular step reactant consumption
-    m_H2_consumed = ((P_FC_gross_idle * 1000.0) / (uav.eta_FC_rated * uav.LHV_H2)) * t_step
+    m_H2_consumed = ((P_FC_gross_idle * 1000.0) / (eta_fc * uav.LHV_H2)) * t_step
     H2_mass -= m_H2_consumed
     m -= m_H2_consumed
 
-    # Telemetry logging (12 arguments)
+    # Telemetry logging (14 arguments)
     P_req = (D * V) / 1000.0  # kW
     cumulative_time = t_baseline + t
     ms.log_telemetry(
         cumulative_time, 'Landing_Rollout', h, V,
         P_req, P_FC_gross_idle, P_FC_net_idle, P_BoP_idle,
-        P_shaft_prop_idle, P_bat_discharge, H2_mass, SoC
+        P_shaft_prop_idle, P_bat_discharge, H2_mass, SoC,
+        xi_fc, eta_fc
     )
 
     if H2_mass < ms.mass_reserve_H2:
@@ -134,7 +143,7 @@ status_str = "Successful" if Phase_Success else "Failed"
 
 print(f'''
     ------- Touchdown {status_str} -------
-    FC Gross Idle Output: {P_FC_gross_idle:.2f} kW
+    FC Gross Idle Output: {P_FC_gross_idle:.2f} kW | Idle Load Ratio (xi): {xi_fc:.2f} | Stack Eff: {eta_fc * 100.0:.2f} %
     Total Ground Roll Distance: {s_land_roll:.2f} m (Limit: {ms.max_permissible_sroll:.1f} m)
     Time Taken to Stop: {t:.2f} sec
     Touchdown Airspeed: {fl.V:.2f} m/s -> Final: {V:.2f} m/s

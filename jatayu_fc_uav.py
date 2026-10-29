@@ -2,6 +2,7 @@
 # PROJECT ARTEMIS 2.0 - FC (FUEL CELL POWERTRAIN CONFIGURATION)
 # ==============================================================================
 import math
+import numpy as np
 from ambiance import Atmosphere
 
 # ------------------------------------------------------------------------------
@@ -82,8 +83,8 @@ LHV_H2 = 120.0e6            # J/kg (Lower Heating Value of Hydrogen: 120 MJ/kg)
 LHV_H2_kWh = LHV_H2 / 3.6e6 # 33.333 kWh/kg
 
 # Stack Efficiency Characteristics (vs Gross Output)
-eta_FC_peak = 0.58          # Peak stack electrical efficiency (part-load loiter)
-eta_FC_rated = 0.52         # Stack electrical efficiency at 100% rated power
+eta_FC_peak = 0.60          # Peak stack electrical efficiency (part-load loiter)
+eta_FC_rated = 0.49         # Stack electrical efficiency at 100% rated power
 
 # ------------------------------------------------------------------------------
 # 5. ENERGY STORAGE & TANK GRAVIMETRICS
@@ -143,6 +144,26 @@ def get_fc_available_power(altitude_m, P_gross_rated=P_FC_gross_rated):
   P_net_avail = (P_gross_avail - P_BoP) * eta_DCDC_boost
 
   return P_gross_avail, P_net_avail, P_BoP
+
+
+def get_fc_efficiency(P_gross, P_gross_avail):
+    """
+    Computes load-dependent PEMFC stack efficiency (LHV basis).
+    Normalized against local altitude-derated capacity P_gross_avail(h).
+    Captures:
+      - Idle / activation losses at low throttle (xi < 0.15)
+      - Peak thermodynamic sweet spot (~60% efficiency) around 25-35% part load
+      - Ohmic and concentration overpotentials (~49% efficiency) at max throttle (xi = 1.0)
+    """
+    if P_gross_avail <= 0.0 or P_gross <= 0.0:
+        return 0.50
+    
+    # Normalized throttle fraction relative to local available capacity
+    xi = float(np.clip(P_gross / P_gross_avail, 0.05, 1.0))
+    
+    # Empirical 2nd-order polarization efficiency curve
+    eta_fc = -0.22 * (xi ** 2) + 0.13 * xi + 0.58
+    return float(eta_fc)
 
 
 # Derive baseline Sea-Level reference values directly from the dynamic function

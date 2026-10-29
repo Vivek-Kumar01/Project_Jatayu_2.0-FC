@@ -140,6 +140,7 @@ cruise_altitude = 3000.0        # m
 cruise_distance = 150.0         # km
 loiter_altitude = cruise_altitude
 
+
 # ------------------------------------------------------------------------------
 # 5. MISSION TELEMETRY RECORDER
 # ------------------------------------------------------------------------------
@@ -156,10 +157,15 @@ telemetry = {
     'P_bat_kW': [],       # Battery power (+ = discharge, - = charge)
     'H2_mass_kg': [],     # Remaining usable hydrogen mass
     'battery_soc': [],    # Buffer battery State of Charge
+    'xi_FC': [],          # Instantaneous stack load fraction (P_gross / P_gross_avail)
+    'eta_FC': [],         # Instantaneous PEMFC stack thermodynamic efficiency (LHV)
 }
 
-def log_telemetry(t, phase, alt, v, p_req, p_fc_gross, p_fc_net, p_bop, p_em, p_bat, h2_mass, soc):
-    """Appends one instantaneous simulation step to the Artemis 2.0-FC telemetry log."""
+
+
+
+def log_telemetry(t, phase, alt, v, p_req, p_fc_gross, p_fc_net, p_bop, p_em, p_bat, h2_mass, soc, xi_fc=None, eta_fc=None):
+    """Appends one instantaneous simulation step to the telemetry log."""
     telemetry['time_s'].append(t)
     telemetry['phase'].append(phase)
     telemetry['altitude_m'].append(alt)
@@ -172,3 +178,18 @@ def log_telemetry(t, phase, alt, v, p_req, p_fc_gross, p_fc_net, p_bop, p_em, p_
     telemetry['P_bat_kW'].append(p_bat)
     telemetry['H2_mass_kg'].append(h2_mass)
     telemetry['battery_soc'].append(soc)
+
+    # Compute dynamically if not explicitly passed by a phase module
+    if xi_fc is None or eta_fc is None:
+        p_gross_avail, _, _ = uav.get_fc_available_power(alt, uav.P_FC_gross_rated)
+        if p_gross_avail > 0.0:
+            calc_xi = float(uav.np.clip(p_fc_gross / p_gross_avail, 0.05, 1.0))
+        else:
+            calc_xi = 0.0
+        calc_eta = uav.get_fc_efficiency(p_fc_gross, p_gross_avail)
+        
+        xi_fc = calc_xi if xi_fc is None else xi_fc
+        eta_fc = calc_eta if eta_fc is None else eta_fc
+
+    telemetry['xi_FC'].append(xi_fc)
+    telemetry['eta_FC'].append(eta_fc)
