@@ -12,9 +12,18 @@ t_step = 1.0  # seconds
 rho = float(Atmosphere(ms.loiter_altitude).density[0]) if hasattr(Atmosphere(ms.loiter_altitude).density, '__len__') else float(Atmosphere(ms.loiter_altitude).density)
 
 safe_margin = 1.25  # Ratio of loiter to stall velocity
-cl_loiter = uav.Cl_max_clean / (safe_margin ** 2)
-cd_loiter = uav.Cd_0 + uav.K * (cl_loiter ** 2)
-n_prop = 0.72  # Propeller efficiency at loiter advance ratio
+# Standoff orbit bank angle (continuous 20 deg circle)
+phi_orbit = math.radians(20.0)
+n_load = 1.0 / math.cos(phi_orbit)  # n ~ 1.0642
+
+# Minimum-power loiter speed condition: Cl = sqrt(3 * Cd0 / K)
+# Clamped safely below clean stall margin (Cl_max_clean = 1.40)
+cl_opt_endurance = math.sqrt(3.0 * uav.Cd_0 / uav.K)
+cl_loiter = min(cl_opt_endurance, uav.Cl_max_clean / (safe_margin ** 2))
+
+# Effective drag polar during turn
+cd_loiter = uav.Cd_0 + uav.K * ((cl_loiter * n_load) ** 2)
+n_prop = 0.66  # Propeller efficiency at loiter advance ratio
 
 # State initializations from Cruise-Out
 m_initial = co.m  # kg

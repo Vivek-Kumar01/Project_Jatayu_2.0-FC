@@ -70,7 +70,7 @@ f_parasitic_coolant = 0.015     # 1.5% to DI coolant pump, valves, and ECU
 f_BoP_total = f_parasitic_compressor + f_parasitic_coolant  # 11.5% total BoP overhead
 
 # Electrical converter efficiency
-eta_DCDC_boost = 0.96           # High-voltage SiC boost converter efficiency
+eta_DCDC_boost = 0.94           # High-voltage SiC boost converter efficiency
 
 # Specific power densities
 sp_power_FC_stack = 2.5     # kW/kg (Aviation metallic bipolar plate PEMFC bare stack)
