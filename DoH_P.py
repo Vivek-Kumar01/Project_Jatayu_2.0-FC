@@ -35,7 +35,7 @@ E_BATT_FIXED = float(ms.battery_capacity)    # 8.0 kWh fixed baseline
 # ------------------------------------------------------------------------------
 # 1. DEFINE GROSS FUEL CELL RATING SWEEP RANGE (kW)
 # ------------------------------------------------------------------------------
-P_FC_SWEEP = np.linspace(40.0, 80.0, 13)
+P_FC_SWEEP = np.linspace(50.0, 55.0, 13)
 sweep_records = []
 
 print('=' * 96)
