@@ -1,5 +1,5 @@
 # ==============================================================================
-# PROJECT ARTEMIS 2.0 - FC (FUEL CELL POWERTRAIN CONFIGURATION)
+# PROJECT JATAYU 2.0 - FC (FUEL CELL POWERTRAIN CONFIGURATION)
 # ==============================================================================
 import math
 import numpy as np
