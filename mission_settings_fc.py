@@ -72,7 +72,7 @@ else:
     ld_max_clean = 1.0 / (2.0 * math.sqrt(uav.Cd_0 * uav.K))
 
     print("=" * 82)
-    print(f"{'PROJECT ARTEMIS 2.0 - FC: POWER-PACK SIZING & CONFIGURATION AUDIT':^82}")
+    print(f"{'PROJECT JATAYU 2.0 - FC: POWER-PACK SIZING & CONFIGURATION AUDIT':^82}")
     print("=" * 82)
 
     # Category 1: Mass Properties & Airframe Limits
@@ -115,7 +115,7 @@ else:
     print(f"  Max Cont Charge Pwr: {power_battery_charge:>8.2f} kW   │  Avionics Buck Mass:  {mass_DCDC_buck:>8.2f} kg")
     print(f"  Installed Power/Wt:  {power_loading:>8.2f} kg/kW│  Avionics Base Power: {power_avionics:>8.2f} kW")
     print("=" * 82)
-    print(f"{'PRE-FLIGHT AUDIT VERIFIED: ARTEMIS 2.0 - FC GO FOR FLIGHT':^82}")
+    print(f"{'PRE-FLIGHT AUDIT VERIFIED: JATAYU 2.0 - FC GO FOR FLIGHT':^82}")
     print("=" * 82 + "\n")
 
 # ------------------------------------------------------------------------------
